@@ -18,7 +18,8 @@
 - **ADM-1** : En tant qu’**administrateur**, je veux **consulter les profils utilisateurs** afin de **superviser l’activité** de la plateforme.
 - **ADM-2** : En tant qu’**administrateur**, je veux **accéder à l’historique des paiements** pour effectuer des **audits de sécurité**.
 - **ADM-3** : En tant qu’**administrateur**, je veux **accéder aux logs techniques** via **Grafana** afin de **surveiller les comportements suspects**.
-- **ADM-4** : En tant qu’**administrateur**, je veux **consulter un journal d’accès unifié** listant les actions effectuées par **SPIFFE ID, utilisateur et rôle**, avec horodatage, pour faciliter les **analyses de sécurité**.
+- **ADM-4** : En tant qu’**administrateur**, je veux **consulter un journal d’accès unifié** listant les actions effectuées par **SPIFFE ID**, **utilisateur** et **rôle**, avec **horodatage**, pour faciliter les **analyses de sécurité**.
+- **ADM-5** : En tant qu’**administrateur**, je veux **filtrer les journaux et événements par SPIFFE ID**, afin d’**identifier les comportements anormaux** spécifiques à un workload.
 
 ---
 
@@ -36,6 +37,7 @@
 - **AUTH-3** : En tant que **service Auth**, je veux **refuser toute requête** provenant d’un **SPIFFE ID invalide** ou **non enregistré**.
 - **AUTH-4** : En tant que **service Auth**, je veux que les **JWT émis** aient une **durée de validité** et un **scope limité** (incluant les rôles).
 - **AUTH-5** : En tant que **service Auth**, je veux **découpler l’authentification technique (SPIFFE ID)** du **rôle métier (présent dans le JWT)**, afin de garantir une **séparation des responsabilités**.
+- **AUTH-6** : En tant que **service Auth**, je veux **gérer la rotation régulière des JWT** pour que l’authentification des utilisateurs reste **à jour et sécurisée**.
 
 ---
 
@@ -69,3 +71,7 @@
 ## 🔁 Composant SPIRE/SPIFFE
 
 - **SPIRE-1** : En tant que **composant SPIRE**, je veux **renouveler automatiquement les SVIDs (certificats)** pour chaque workload afin de garantir une **identité continue et sécurisée**.
+- **SEC-1** : En tant que **système**, je veux que tous les **microservices communiquent exclusivement via mTLS**, basé sur SPIFFE ID, pour **chiffrer et authentifier** tous les échanges inter-services.
+- **SEC-2** : En tant que **composant SPIRE/OPA**, je veux **refuser par défaut toute requête**, sauf si elle est explicitement **autorisée** par **SPIFFE ID** et **rôle**.
+- **SEC-3** : En tant que **système**, je veux **détecter automatiquement les SVIDs expirés ou invalides** et **générer une alerte Prometheus**, pour renforcer la **détection de compromission**.
+
