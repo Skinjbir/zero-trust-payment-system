@@ -79,9 +79,3 @@ Dans cette architecture, **aucun composant, utilisateur, service ou réseau n’
   - Appliquer une politique d’accès précise par ID
 - Il n’y a **aucune segmentation réseau IP**, la segmentation est **logique par SPIFFE ID**
 
-### Exemple :
-```rego
-allow {
-  input.spiffe_id == "spiffe://payment.local/agent/kiosk-001"
-  input.path == ["deposit"]
-}
