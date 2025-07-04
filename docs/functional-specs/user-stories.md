@@ -13,13 +13,24 @@
 
 ---
 
-## 🤖 Agent de Paiement (SPIFFE ID)
+## 👤 Agent Métier (auth via JWT)
 
-- **AG-1** : En tant qu’**agent de paiement**, je veux **effectuer un dépôt** vers un portefeuille utilisateur, en appelant un endpoint sécurisé.
-- **AG-2** : En tant qu’**agent**, je veux que mon **accès soit limité exclusivement** à `/deposit` via mon **SPIFFE ID attesté**.
-- **AG-3** : En tant qu’**agent**, je veux que mes dépôts soient **loggués avec SPIFFE ID, montant, destinataire et horodatage** pour auditabilité.
+### AG-1 – Dépôt sécurisé
+> En tant qu’**agent métier (guichetier)**, je veux **effectuer un dépôt** vers un portefeuille utilisateur en appelant un endpoint sécurisé via l’interface applicative.
 
----
+### AG-2 – Accès restreint
+> En tant qu’**agent authentifié via JWT**, je veux que mon **accès soit strictement limité** à l’endpoint `/deposit`, selon mon rôle (`agent`) validé dynamiquement par **OPA**.
+
+### AG-3 – Journalisation pour audit
+> En tant qu’**agent**, je veux que **chaque opération de dépôt soit journalisée** avec :
+> - mon identifiant (`sub` JWT)
+> - le montant
+> - le portefeuille cible
+> - l’horodatage
+>
+> Ceci afin d'assurer une **traçabilité complète** et la conformité avec les exigences d’audit.
+
+
 
 ## 🛡️ Administrateur Utilisateur (JWT `role: admin`)
 

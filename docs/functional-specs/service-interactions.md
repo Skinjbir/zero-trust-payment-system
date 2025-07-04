@@ -32,10 +32,17 @@ Toutes les communications interservices sont :
 - Après une opération de débit/crédit, `wallet-service` notifie `user-service` pour affichage côté utilisateur.
 - L’appel est fait via mTLS entre SPIFFE ID valides.
 
-## 6. `agent-service` ↔ `wallet-service` (dépôt sécurisé)
-- Un workload identifié par SPIFFE ID (`spiffe://payment.local/agent/...`) appelle `/deposit`.
-- OPA vérifie que cet ID est autorisé **uniquement** à cet endpoint.
-- Toute autre tentative est rejetée par OPA ou par Envoy (deny-by-default).
+## 6. Agent Métier (humain) ↔ `wallet-service` (dépôt sécurisé)
+
+- L’agent (guichetier) s’authentifie via l’interface avec un JWT signé (`role: agent`).
+- Il appelle l’endpoint `/deposit` du `wallet-service` pour effectuer un dépôt dans un portefeuille utilisateur.
+- OPA vérifie dynamiquement :
+  - que le JWT est valide
+  - que le rôle est bien `agent`
+  - que l’accès est limité à l’endpoint `/deposit`
+- Toute tentative d’accès à d'autres endpoints ou rôles non autorisés est rejetée.
+- Chaque dépôt est journalisé avec : ID de l’agent (`sub` JWT), montant, destinataire, horodatage.
+
 
 ## 7. Frontend ↔ Microservices (via JWT uniquement)
 - Le frontend transmet le JWT dans chaque requête (`Authorization: Bearer ...`).
