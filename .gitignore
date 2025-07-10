@@ -1,47 +1,51 @@
-# Node.js dependencies
+# Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-
-# Build output
-dist/
-build/
-out/
-coverage/
-.tmp/
-.temp/
-.cache/
-.next/
-.svelte-kit/
-.sapper/
-.storybook/
-.cypress/
-.vscode-test/
-
-# Environment files
 .env
-.env.*.local
+.env.*
 
-# IDE files
+# Logs
+logs
+*.log
+*.out
+*.pid
+
+# Editor folders
 .vscode/
 .idea/
-*.sublime-workspace
-*.sublime-project
+*.swp
 
-# OS files
+# Docker
+*.tar
+*.img
+docker-compose.override.yml
+
+# Minikube & Kubernetes
+.kube/
+minikube/
+*.crt
+*.key
+
+# Build artifacts
+dist/
+coverage/
+build/
+.tmp/
+temp/
+
+# OS-generated files
 .DS_Store
 Thumbs.db
 
-# Misc
-*.local
-*.log
-*.tgz
-*.swp
-*.bak
-*.orig
-*.rej
+# GitHub Actions
+.github/workflows/*.secret.*
+secrets.yml
+
+# Dependency scanning / tools
+.trivy/
 
 private.pem
-logs
+
+PRIVATE_KEY.pemservices/auth-service/src/keys/private.pem
