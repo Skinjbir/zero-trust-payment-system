@@ -48,4 +48,4 @@ secrets.yml
 
 
 
-PRIVATE_KEY.pem
+PRIVATE_KEY.pemservices/auth-service/src/keys/private.pem
