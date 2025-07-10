@@ -42,3 +42,6 @@ Thumbs.db
 *.bak
 *.orig
 *.rej
+
+private.pem
+logs
