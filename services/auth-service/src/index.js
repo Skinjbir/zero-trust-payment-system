@@ -13,7 +13,7 @@ app.use('/api/auth', authRoutes);
 app.get('/health', (req, res) => res.json({ status: 'Auth service running 🟢' }));
 
 module.exports = app;
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Auth service running on port ${PORT} 🚀`);
 });

@@ -1,5 +1,9 @@
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
 const pool = require('../config/db');
+
+const PUBLIC_KEY = fs.readFileSync(path.join(__dirname, '../keys/public.pem'), 'utf8');
 
 module.exports = async (req, res, next) => {
   const auth = req.headers.authorization;
@@ -10,10 +14,8 @@ module.exports = async (req, res, next) => {
   const token = auth.split(' ')[1];
 
   try {
-    // Verify signature
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] });
 
-    // Check if token was revoked
     const result = await pool.query(
       'SELECT revoked FROM jwt_tokens WHERE token = $1',
       [token]

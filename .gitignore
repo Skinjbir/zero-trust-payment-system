@@ -45,3 +45,7 @@ secrets.yml
 
 # Dependency scanning / tools
 .trivy/
+
+
+
+PRIVATE_KEY.pem
