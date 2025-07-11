@@ -48,4 +48,7 @@ secrets.yml
 
 private.pem
 
+logs/*
+logs
+
 PRIVATE_KEY.pemservices/auth-service/src/keys/private.pem

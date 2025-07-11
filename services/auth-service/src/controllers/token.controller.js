@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { PUBLIC_KEY } = require('../config/jwt'); 
-
+const logger = require('../utils/logger.util');
+const pool = require('../config/db'); 
 exports.verifyToken = async (req, res) => {
   try {
     const auth = req.headers.authorization;

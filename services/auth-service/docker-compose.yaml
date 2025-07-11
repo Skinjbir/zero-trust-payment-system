@@ -15,5 +15,16 @@ services:
     ports:
       - "5432:5432"
 
+  authservice:
+    image: authservice
+    container_name: auth-service
+    restart: always
+    depends_on:
+      - postgres
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
+
 volumes:
   pgdata:
