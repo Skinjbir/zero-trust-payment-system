@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { PUBLIC_KEY } = require('../config/jwt'); 
 const logger = require('../utils/logger.util');
 const pool = require('../config/db'); 
+
 exports.verifyToken = async (req, res) => {
   try {
     const auth = req.headers.authorization;
@@ -11,7 +12,7 @@ exports.verifyToken = async (req, res) => {
 
     const token = auth.split(' ')[1];
     const decoded = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] });
-    
+
     // Check if token is revoked
     const result = await pool.query(
       'SELECT revoked FROM jwt_tokens WHERE token = $1',
@@ -31,7 +32,7 @@ exports.verifyToken = async (req, res) => {
       user: {
         id: decoded.sub,
         email: decoded.email,
-        role: decoded.role
+        roles: decoded.roles || []  // ✅ now returns roles array
       }
     });
   } catch (err) {

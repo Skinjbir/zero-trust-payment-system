@@ -1,5 +1,3 @@
--- auth-service/db/init.sql
-
 CREATE TABLE users (
     id UUID PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -30,7 +28,26 @@ CREATE TABLE jwt_tokens (
     revoked BOOLEAN DEFAULT FALSE
 );
 
+-- Seed roles
 INSERT INTO roles (name, description)
 VALUES 
   ('user', 'Default role for new users'),
-  ('admin', 'Administrator role');
+  ('admin', 'Administrator role'),
+  ('user_admin', 'Handles User management'),
+  ('finance_admin', 'Handles payments and wallets'),
+  ('audit_admin', 'Can read logs and trace activity');
+
+-- Seed super admin user
+INSERT INTO users (id, email, password_hash, status)
+VALUES (
+  '11111111-1111-1111-1111-111111111111',
+  'admin@zerotrust.io',
+  '$2b$10$hzODBBpp.IN193g.fvrT4eeLfe7CI6qB/Sgj7B.MXD/uI/R6TtRJe', -- 'AdminPass123!'
+  'active'
+);
+
+-- Assign admin roles to super admin
+INSERT INTO user_roles (user_id, role_id)
+SELECT '11111111-1111-1111-1111-111111111111', id
+FROM roles
+WHERE name IN ('admin', 'user_admin', 'finance_admin', 'audit_admin');

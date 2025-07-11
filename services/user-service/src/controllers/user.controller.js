@@ -64,17 +64,34 @@ exports.createProfile = async (req, res) => {
   }
 };
 
-// 👥 Get all users (admin-only route)
 exports.getAllUsers = async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM users');
+    const result = await db.query(`
+      SELECT 
+        u.id AS user_id,
+        u.email,
+        p.full_name,
+        p.phone,
+        p.date_of_birth,
+        p.address,
+        p.avatar_url,
+        p.bio,
+        p.created_at,
+        p.updated_at
+      FROM users u
+      LEFT JOIN profiles p ON u.id = p.user_id
+    `);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No users found' });
+    }
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching all users:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 // ✏️ Update own profile
 exports.updateUserProfile = async (req, res) => {
   try {
