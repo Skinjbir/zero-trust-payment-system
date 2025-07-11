@@ -7,7 +7,16 @@ const { getUserRoles, assignDefaultRole } = require('../models/role.model');
 const logger = require('../utils/logger.util');
 
 exports.register = async (req, res) => {
-  const { email, password, fullName, phone } = req.body;
+  const {
+    email,
+    password,
+    full_name,
+    phone,
+    date_of_birth,
+    address,
+    avatar_url,
+    bio
+  } = req.body;
 
   if (!email || !password) {
     logger.warn('Register attempt with missing credentials');
@@ -22,13 +31,26 @@ exports.register = async (req, res) => {
 
   const id = uuidv4();
   const hashed = await bcrypt.hash(password, 12);
-  await createUser(id, email, hashed, fullName, phone);
+
+  await createUser(
+    id,
+    email,
+    hashed,
+    full_name,
+    phone,
+    date_of_birth,
+    address,
+    avatar_url,
+    bio
+  );
+
   await assignDefaultRole(id);
 
   logger.info(`New user registered: ${email}`);
-  res.status(201).json({ message: 'User registered successfully ✅' });
+  res.status(201).json({ 
+    user_id: id,
+    message: 'User registered successfully ✅' });
 };
-
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
