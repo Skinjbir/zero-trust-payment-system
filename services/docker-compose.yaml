@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # 🔐 Auth DB
+  auth-db:
+    image: postgres:15
+    container_name: auth-db
+    restart: always
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+      - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # 👤 User DB
+  user-db:
+    image: postgres:15
+    container_name: user-db
+    restart: always
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: user_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+      - ./user-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+
+
+  # 🔐 Auth Service
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    restart: always
+    depends_on:
+      - auth-db
+      - user-service
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
+      USER_SERVICE_URL: http://user-service:3002
+
+  # 👤 User Service
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    restart: always
+    depends_on:
+      - user-db
+    ports:
+      - "3002:3002"
+    environment:
+      DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
+
+
+
+volumes:
+  auth-db-data:
+  user-db-data:
+
