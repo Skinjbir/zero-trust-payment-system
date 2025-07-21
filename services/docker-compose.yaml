@@ -31,6 +31,8 @@ services:
       - user-db-data:/var/lib/postgresql/data
       - ./user-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
+
+
   # 🔐 Auth Service
   auth-service:
     build: ./auth-service
@@ -56,8 +58,10 @@ services:
       - "3002:3002"
     environment:
       DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
-      
+
+
 
 volumes:
   auth-db-data:
   user-db-data:
+

@@ -38,3 +38,9 @@ module.exports = {
   findUserByEmail,
   createUser
 };
+
+// ==============================================================
+// UPDATED ROLE MODEL FUNCTIONS (models/role.model.js)
+// ==============================================================
+
+
