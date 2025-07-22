@@ -31,7 +31,20 @@ services:
       - user-db-data:/var/lib/postgresql/data
       - ./user-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-
+  # 💰 Wallet DB
+  wallet-db:
+    image: postgres:15
+    container_name: wallet-db
+    restart: always
+    environment:
+      POSTGRES_DB: wallet_db
+      POSTGRES_USER: wallet_user
+      POSTGRES_PASSWORD: wallet_pass
+    ports:
+      - "5436:5432"
+    volumes:
+      - wallet-db-data:/var/lib/postgresql/data
+      - ./wallet-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   # 🔐 Auth Service
   auth-service:
@@ -59,9 +72,23 @@ services:
     environment:
       DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
 
-
+  # 💰 Wallet Service
+  wallet-service:
+    build: ./wallet-service
+    container_name: wallet-service
+    restart: always
+    depends_on:
+      - wallet-db
+      - auth-service
+      - user-service
+    ports:
+      - "3003:3003"
+    environment:
+      DATABASE_URL: postgres://wallet_user:wallet_pass@wallet-db:5432/wallet_db
+      AUTH_SERVICE_URL: http://auth-service:3001
+      USER_SERVICE_URL: http://user-service:3002
 
 volumes:
   auth-db-data:
   user-db-data:
-
+  wallet-db-data:
