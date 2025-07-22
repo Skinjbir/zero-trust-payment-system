@@ -11,12 +11,61 @@ const { validateEmail, validatePassword } = require('../validators/validators');
 const axios = require('axios');
 
 
+// Replace with your user-service base URL
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:3002';
+
+function prepareProfileData(data) {
+  function formatDateOfBirth(dob) {
+    // Support DDMMYYYY → YYYY-MM-DD
+    if (!dob || typeof dob !== 'string') return null;
+    if (/^\d{8}$/.test(dob)) {
+      const day = dob.substring(0, 2);
+      const month = dob.substring(2, 4);
+      const year = dob.substring(4, 8);
+      return `${year}-${month}-${day}`;
+    }
+    // If already in YYYY-MM-DD format, return as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dob)) return dob;
+    return null; // fallback for invalid formats
+  }
+
+  return {
+    email: data.email.toLowerCase().trim(),
+    full_name: data.full_name?.trim(),
+    phone: data.phone?.trim(),
+    date_of_birth: formatDateOfBirth(data.date_of_birth),
+    address: data.address?.trim(),
+    avatar_url: data.avatar_url?.trim(),
+    bio: data.bio?.trim()
+  };
+}
 
 
-// Rate limiting helper (store in Redis or memory cache in production)
+async function sendProfileToUserService(userId, profileData) {
+  console.log('🔵 Sending profile to user-service:')
+  console.log('User ID:', userId);
+  console.log('Profile Data:', profileData);
+  console.log('User Service URL:', USER_SERVICE_URL);
+  try {
+   const response = await axios.post(
+  `${USER_SERVICE_URL}/api/user/createProfile`, 
+  payload,
+  { headers }
+);
+
+    console.log('✅ User-service response:', response.data);
+    return response.data;
+  } catch (err) {
+    console.error('❌ Failed to send profile to user-service:', err.message);
+    throw err;
+  }
+}
+
+
+
 const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+const LOCKOUT_TIME = 15 * 60 * 1000; 
 
 const isLockedOut = (email) => {
   const attempts = loginAttempts.get(email);
@@ -73,15 +122,17 @@ exports.register = async (req, res) => {
       bio = ''
     } = req.body;
 
-    const profileData = {
-      email,
-      full_name,
-      phone,
-      date_of_birth,
-      address,
-      avatar_url,
-      bio
-    };
+ const profileData = prepareProfileData({
+  email,
+  full_name,
+  phone,
+  date_of_birth,
+  address,
+  avatar_url,
+  bio
+});
+
+
 
     console.log('🔵 Profile Information:', profileData);
 
@@ -141,6 +192,7 @@ exports.register = async (req, res) => {
 
     // ✅ Send profile to user-service
     console.log('🟣 Sending profile to user-service...');
+    await sendProfileToUserService(userId, profileData);
 
     await client.query('COMMIT');
 
