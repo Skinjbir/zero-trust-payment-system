@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # 🛢️ Auth DB
   postgres:
     image: postgres:15
     container_name: auth-db
@@ -9,13 +10,14 @@ services:
       POSTGRES_DB: auth_db
       POSTGRES_USER: auth_user
       POSTGRES_PASSWORD: auth_pass
-      USER_SERVICE_URL : http://user-service:3002 
+      USER_SERVICE_URL: http://user-service:3002
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
 
+  # 🔑 Auth Service
   authservice:
     image: authservice
     container_name: auth-service
@@ -27,5 +29,33 @@ services:
     environment:
       DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
 
+  # 🛢️ Audit DB
+  audit-postgres:
+    image: postgres:15
+    container_name: audit-db
+    restart: always
+    environment:
+      POSTGRES_DB: audit_db
+      POSTGRES_USER: audit_user
+      POSTGRES_PASSWORD: audit_pass
+    volumes:
+      - audit_pgdata:/var/lib/postgresql/data
+      - ./audit-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432" # Expose on different host port
+
+  # 📜 Audit Service
+  auditservice:
+    image: auditservice
+    container_name: audit-service
+    restart: always
+    depends_on:
+      - audit-postgres
+    ports:
+      - "4003:4003"
+    environment:
+      DATABASE_URL: postgres://audit_user:audit_pass@audit-db:5432/audit_db
+
 volumes:
   pgdata:
+  audit_pgdata:
