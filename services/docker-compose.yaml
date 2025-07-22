@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: auth_user
       POSTGRES_PASSWORD: auth_pass
     ports:
-      - "5542:5432"   # changed host port to 5542
+      - "5542:5432"   # kept DB port change to avoid conflicts
     volumes:
       - auth-db-data:/var/lib/postgresql/data
       - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -26,7 +26,7 @@ services:
       POSTGRES_USER: user_user
       POSTGRES_PASSWORD: user_pass
     ports:
-      - "5543:5432"   # changed host port to 5543
+      - "5543:5432"   # kept DB port change to avoid conflicts
     volumes:
       - user-db-data:/var/lib/postgresql/data
       - ./user-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -41,7 +41,7 @@ services:
       POSTGRES_USER: wallet_user
       POSTGRES_PASSWORD: wallet_pass
     ports:
-      - "5544:5432"   # changed host port to 5544
+      - "5544:5432"   # kept DB port change to avoid conflicts
     volumes:
       - wallet-db-data:/var/lib/postgresql/data
       - ./wallet-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -56,7 +56,7 @@ services:
       POSTGRES_USER: audit_user
       POSTGRES_PASSWORD: audit_pass
     ports:
-      - "5545:5432"   # changed host port to 5545
+      - "5545:5432"   # kept DB port change to avoid conflicts
     volumes:
       - audit-db-data:/var/lib/postgresql/data
       - ./audit-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -70,11 +70,11 @@ services:
       - auth-db
       - user-service
     ports:
-      - "3101:3001"   # shifted port to 3101
+      - "3001:3001"   # original port
     environment:
       DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
-      USER_SERVICE_URL: http://user-service:3102
-      AUDIT_SERVICE_URL: http://audit-service:4101
+      USER_SERVICE_URL: http://user-service:3002
+      AUDIT_SERVICE_URL: http://audit-service:4001
 
   # 👤 User Service
   user-service:
@@ -84,10 +84,10 @@ services:
     depends_on:
       - user-db
     ports:
-      - "3102:3002"   # shifted port to 3102
+      - "3002:3002"   # original port
     environment:
       DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
-      AUDIT_SERVICE_URL: http://audit-service:4101
+      AUDIT_SERVICE_URL: http://audit-service:4001
 
   # 💰 Wallet Service
   wallet-service:
@@ -99,12 +99,12 @@ services:
       - auth-service
       - user-service
     ports:
-      - "3103:3003"   # shifted port to 3103
+      - "3003:3003"   # original port
     environment:
       DATABASE_URL: postgres://wallet_user:wallet_pass@wallet-db:5432/wallet_db
-      AUTH_SERVICE_URL: http://auth-service:3101
-      USER_SERVICE_URL: http://user-service:3102
-      AUDIT_SERVICE_URL: http://audit-service:4101
+      AUTH_SERVICE_URL: http://auth-service:3001
+      USER_SERVICE_URL: http://user-service:3002
+      AUDIT_SERVICE_URL: http://audit-service:4001
 
   # 📜 Audit Service
   audit-service:
@@ -114,7 +114,7 @@ services:
     depends_on:
       - audit-db
     ports:
-      - "4101:4001"   # shifted port to 4101
+      - "4001:4001"   # original port
     environment:
       DATABASE_URL: postgres://audit_user:audit_pass@audit-db:5432/audit_db
 

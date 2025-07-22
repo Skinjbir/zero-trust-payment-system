@@ -1,5 +1,6 @@
-
 const express = require('express');
+const router = express.Router();
+
 const {
   register,
   registerClient,
@@ -16,34 +17,39 @@ const { checkTokenRevocation, verifyToken } = require('../controllers/token.cont
 const authMiddleware = require('../middlewares/auth.middleware');
 const jwks = require('../utils/jwks.util');
 
-const router = express.Router();
+/**
+ * ================================
+ *           AUTH ROUTES
+ * ================================
+ */
 
-// 🧾 Registration
-router.post('/register-client', registerClient);             // public
-router.post('/register-admin', authMiddleware, registerAdmin); // admin-only
+// 🧾 Registration Endpoints
+router.post('/register-client', registerClient);               // Public registration
+router.post('/register-admin', authMiddleware, registerAdmin); // Admin-only registration
 
-// 🔐 Auth flow
+// 🔐 Authentication Flow
 router.post('/login', login);
 router.post('/logout', authMiddleware, logout);
 router.get('/still-logged-in', authMiddleware, stillLoggedIn);
 
-// 🔁 Password management
+// 🔁 Password Management
 router.post('/forgot-password', forgotPassword);
-router.post('/reset-password', authMiddleware, resetPassword); // requires auth
-router.post('/complete-password-reset', completePasswordReset); // uses token
+router.post('/reset-password', authMiddleware, resetPassword);       // Requires authentication
+router.post('/complete-password-reset', completePasswordReset);       // Uses reset token
 
-// 🔍 Token verification
+// 🔍 Token Verification
 router.post('/verify', verifyToken);
 
-// 🔑 JWKS endpoint
+// 🔑 JSON Web Key Set Endpoint for JWT verification
 router.get('/.well-known/jwks.json', (req, res) => {
   res.json(jwks);
 });
 
-// Combined validate endpoint with revocation check
+// Combined token validation with revocation check
 router.get('/validate', verifyToken, async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(' ')[1];
 
     if (!token) {
       return res.status(401).json({ error: 'Token is required' });
@@ -64,15 +70,14 @@ router.get('/validate', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('[VALIDATE ERROR]', { error: error.message });
+    console.error('[VALIDATE ERROR]', error.message);
     res.status(500).json({ error: 'Token validation failed' });
   }
 });
 
-// 🫀 Health check
+// 🫀 Health Check Endpoint
 router.get('/health', (req, res) => {
   res.status(200).json({ message: 'Auth service is healthy' });
 });
 
 module.exports = router;
-
