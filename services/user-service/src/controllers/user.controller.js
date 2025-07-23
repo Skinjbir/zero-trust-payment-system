@@ -1,5 +1,6 @@
 require('dotenv').config();
 const db = require('../config/db');
+const logger = require('../utils/logger.util'); // Added logger import
 const { getUserByIdFromDB, checkUserExists, insertProfile, insertUser } = require('../models/user.model');
 
 const ROLES = {
@@ -22,28 +23,47 @@ const checkPermission = (requiredRoles) => {
   return (req, res, next) => {
     const userRoles = req.user?.roles || [];
 
-    console.log('Checking permissions for user:', req.user);
-    console.log('User roles:', userRoles, 'Required roles:', requiredRoles);
+    logger.info('📋 [INFO] Checking permissions', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      userRoles,
+      requiredRoles,
+      timestamp: new Date().toISOString()
+    });
 
     if (userRoles.includes(ROLES.ADMIN)) {
-      console.log('User is ADMIN, bypassing permission check.');
+      logger.info('✅ [INFO] User is ADMIN, bypassing permission check', {
+        userId: req.user?.sub,
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
       return next(); 
     }
 
     const hasPermission = userRoles.some(role => requiredRoles.includes(role));
     if (!hasPermission) {
-      console.log('Access denied: insufficient permissions');
+      logger.warn('🚫 [WARN] Access denied: insufficient permissions', {
+        userId: req.user?.sub,
+        email: req.user?.email,
+        userRoles,
+        requiredRoles,
+        timestamp: new Date().toISOString()
+      });
       return res.status(403).json({
         error: 'Access denied',
         message: 'Insufficient permissions'
       });
     }
 
-    console.log('Permission granted.');
+    logger.info('✅ [INFO] Permission granted', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      userRoles,
+      timestamp: new Date().toISOString()
+    });
     next();
   };
 };
-
 
 // Input validation helpers
 const validateEmail = (email) => {
@@ -107,15 +127,30 @@ exports.getProfile = async (req, res) => {
     const userRole = req.user?.role || ROLES.USER;
     
     if (!userId) {
+      logger.warn('🚫 [WARN] Unauthorized attempt to get profile', {
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(401).json({ 
         error: 'Unauthorized', 
         message: 'User ID not found' 
       });
     }
 
+    logger.info('📋 [INFO] Fetching user profile', {
+      userId,
+      userRole,
+      email: req.user?.email,
+      timestamp: new Date().toISOString()
+    });
+
     const user = await getUserByIdFromDB(userId);
     
     if (!user) {
+      logger.warn('🚫 [WARN] User not found', {
+        userId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(404).json({ 
         error: 'User not found'
       });
@@ -123,17 +158,30 @@ exports.getProfile = async (req, res) => {
 
     const filteredUser = filterUserData(user, userRole, true);
     
+    logger.info('✅ [INFO] User profile retrieved successfully', {
+      userId,
+      email: user.email,
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       success: true,
       data: filteredUser
     });
   } catch (error) {
-    console.error('Error getting profile:', error);
+    logger.error('❌ [ERROR] Failed to get user profile', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     res.status(500).json({ 
       error: 'Internal server error'
     });
   }
 };
+
 // 🔎 Get user by ID
 exports.getUserById = async (req, res) => {
   try {
@@ -142,11 +190,22 @@ exports.getUserById = async (req, res) => {
     const userRole = req.user?.role || ROLES.USER;
     const userRoles = req.user?.roles || [];
 
-    console.log('Fetching user by ID:', id, 'Current user ID:', currentUserId, 'User role:', userRole);
+    logger.info('📋 [INFO] Fetching user by ID', {
+      targetUserId: id,
+      currentUserId,
+      userRole,
+      email: req.user?.email,
+      timestamp: new Date().toISOString()
+    });
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(id)) {
+      logger.warn('🚫 [WARN] Invalid user ID format', {
+        targetUserId: id,
+        currentUserId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
         error: 'Invalid user ID format'
       });
@@ -155,6 +214,11 @@ exports.getUserById = async (req, res) => {
     const user = await getUserByIdFromDB(id);
 
     if (!user) {
+      logger.warn('🚫 [WARN] User not found', {
+        targetUserId: id,
+        currentUserId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(404).json({
         error: 'User not found'
       });
@@ -166,9 +230,22 @@ exports.getUserById = async (req, res) => {
       PERMISSIONS.READ_USER_DETAILS.includes(role)
     );
 
-    console.log('User roles:', userRoles, 'Is own profile:', isOwnProfile, 'Has permission:', hasPermission);
+    logger.info('📋 [INFO] Checking access permissions', {
+      targetUserId: id,
+      currentUserId,
+      isOwnProfile,
+      hasPermission,
+      userRoles,
+      timestamp: new Date().toISOString()
+    });
 
     if (!isOwnProfile && !hasPermission) {
+      logger.warn('🚫 [WARN] Access denied to user profile', {
+        targetUserId: id,
+        currentUserId,
+        userRoles,
+        timestamp: new Date().toISOString()
+      });
       return res.status(403).json({
         error: 'Access denied'
       });
@@ -176,17 +253,32 @@ exports.getUserById = async (req, res) => {
 
     const filteredUser = filterUserData(user, userRole, isOwnProfile);
 
+    logger.info('✅ [INFO] User profile retrieved successfully', {
+      targetUserId: id,
+      currentUserId,
+      email: user.email,
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       success: true,
       data: filteredUser
     });
   } catch (error) {
-    console.error('Error fetching user by ID:', error);
+    logger.error('❌ [ERROR] Failed to fetch user by ID', {
+      targetUserId: req.params.id,
+      currentUserId: req.user?.sub,
+      email: req.user?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     res.status(500).json({
       error: 'Internal server error'
     });
   }
 };
+
 // 🧾 Create user profile (called by auth service)
 exports.createProfile = async (req, res) => {
   try {
@@ -201,29 +293,45 @@ exports.createProfile = async (req, res) => {
       bio 
     } = req.body;
 
-    // ✅ Validate required fields
+    // Validate required fields
     if (!user_id || !email) {
+      logger.warn('🚫 [WARN] Missing required fields for profile creation', {
+        userId: user_id,
+        email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ 
         error: 'Missing required fields',
         message: 'user_id and email are required'
       });
     }
 
-    // ✅ Validate email format
+    // Validate email format
     if (!validateEmail(email)) {
+      logger.warn('🚫 [WARN] Invalid email format for profile creation', {
+        userId: user_id,
+        email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ 
         error: 'Invalid email format'
       });
     }
 
-    // ✅ Validate phone if provided
+    // Validate phone if provided
     if (phone && !validatePhone(phone)) {
+      logger.warn('🚫 [WARN] Invalid phone format for profile creation', {
+        userId: user_id,
+        email,
+        phone,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ 
         error: 'Invalid phone format'
       });
     }
 
-    // ✅ Sanitize inputs
+    // Sanitize inputs
     const sanitizedData = {
       user_id,
       email: sanitizeInput(email.toLowerCase()),
@@ -235,25 +343,35 @@ exports.createProfile = async (req, res) => {
       bio: sanitizeInput(bio),
     };
 
-    console.log('Creating profile with data:', sanitizedData);
+    logger.info('📋 [INFO] Creating user profile', {
+      userId: user_id,
+      email: sanitizedData.email,
+      sanitizedData,
+      timestamp: new Date().toISOString()
+    });
 
     const client = await db.connect();
     try {
       await client.query('BEGIN');
 
-      // ✅ Check if user already exists
+      // Check if user already exists
       const userExists = await checkUserExists(sanitizedData.user_id, sanitizedData.email);
       if (userExists) {
+        logger.warn('🚫 [WARN] User already exists', {
+          userId: sanitizedData.user_id,
+          email: sanitizedData.email,
+          timestamp: new Date().toISOString()
+        });
         throw new Error('User already exists');
       }
 
-      // ✅ Insert user into `users` table
+      // Insert user into `users` table
       const userResult = await insertUser({
         user_id: sanitizedData.user_id,
         email: sanitizedData.email
       });
 
-      // ✅ Insert profile into `profiles` table
+      // Insert profile into `profiles` table
       const profileResult = await insertProfile({
         user_id: sanitizedData.user_id,
         full_name: sanitizedData.full_name,
@@ -265,6 +383,12 @@ exports.createProfile = async (req, res) => {
       });
 
       await client.query('COMMIT');
+
+      logger.info('✅ [INFO] User profile created successfully', {
+        userId: sanitizedData.user_id,
+        email: sanitizedData.email,
+        timestamp: new Date().toISOString()
+      });
 
       res.status(201).json({
         success: true,
@@ -283,7 +407,13 @@ exports.createProfile = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error creating profile:', error);
+    logger.error('❌ [ERROR] Failed to create user profile', {
+      userId: req.body?.user_id,
+      email: req.body?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
 
     if (error.message === 'User already exists') {
       return res.status(409).json({ 
@@ -297,7 +427,6 @@ exports.createProfile = async (req, res) => {
   }
 };
 
-
 // 📊 Get all users (admin/user_admin/audit_admin only)
 exports.getAllUsers = async (req, res) => {
   try {
@@ -310,6 +439,15 @@ exports.getAllUsers = async (req, res) => {
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
     const offset = (pageNum - 1) * limitNum;
+
+    logger.info('📋 [INFO] Fetching all users', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      page: pageNum,
+      limit: limitNum,
+      search,
+      timestamp: new Date().toISOString()
+    });
 
     // Build base query
     let query = `
@@ -362,6 +500,15 @@ exports.getAllUsers = async (req, res) => {
       filterUserData(user, userRoles, false)
     );
 
+    logger.info('✅ [INFO] All users retrieved successfully', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      totalCount,
+      page: pageNum,
+      limit: limitNum,
+      timestamp: new Date().toISOString()
+    });
+
     res.json({
       success: true,
       data: filteredUsers,
@@ -374,15 +521,19 @@ exports.getAllUsers = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching all users:', error);
+    logger.error('❌ [ERROR] Failed to fetch all users', {
+      userId: req.user?.sub,
+      email: req.user?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     res.status(500).json({ 
       success: false,
       error: 'Internal server error'
     });
   }
 };
-
-
 
 // ✏️ Update user profile
 exports.updateUserProfile = async (req, res) => {
@@ -391,8 +542,12 @@ exports.updateUserProfile = async (req, res) => {
     const currentUserId = req.user?.sub;
     const userRole = req.user?.role || ROLES.USER;
     
-    
     if (!targetUserId) {
+      logger.warn('🚫 [WARN] Missing user ID for profile update', {
+        currentUserId,
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ 
         error: 'Missing user ID'
       });
@@ -405,9 +560,23 @@ exports.updateUserProfile = async (req, res) => {
       PERMISSIONS.MANAGE_USERS.includes(role)
     );
 
-    console.log('Updating profile for user:', targetUserId, 'Current user ID:', currentUserId, 'Is own profile:', isOwnProfile, 'Has permission:', hasPermission);
+    logger.info('📋 [INFO] Updating user profile', {
+      targetUserId,
+      currentUserId,
+      isOwnProfile,
+      hasPermission,
+      userRole,
+      email: req.user?.email,
+      timestamp: new Date().toISOString()
+    });
 
     if (!isOwnProfile && !hasPermission) {
+      logger.warn('🚫 [WARN] Access denied for profile update', {
+        targetUserId,
+        currentUserId,
+        userRoles,
+        timestamp: new Date().toISOString()
+      });
       return res.status(403).json({
         error: 'Access denied'
       });
@@ -417,6 +586,11 @@ exports.updateUserProfile = async (req, res) => {
 
     // Validate phone if provided
     if (phone && !validatePhone(phone)) {
+      logger.warn('🚫 [WARN] Invalid phone format for profile update', {
+        targetUserId,
+        phone,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ 
         error: 'Invalid phone format'
       });
@@ -425,12 +599,23 @@ exports.updateUserProfile = async (req, res) => {
     // Role update validation
     if (role !== undefined) {
       if (!hasPermission) {
+        logger.warn('🚫 [WARN] Unauthorized attempt to update role', {
+          targetUserId,
+          currentUserId,
+          role,
+          timestamp: new Date().toISOString()
+        });
         return res.status(403).json({
           error: 'Cannot update role'
         });
       }
 
       if (!Object.values(ROLES).includes(role)) {
+        logger.warn('🚫 [WARN] Invalid role for profile update', {
+          targetUserId,
+          role,
+          timestamp: new Date().toISOString()
+        });
         return res.status(400).json({
           error: 'Invalid role'
         });
@@ -468,6 +653,11 @@ exports.updateUserProfile = async (req, res) => {
     }
 
     if (updates.length === 0 && role === undefined) {
+      logger.warn('🚫 [WARN] No fields to update for profile', {
+        targetUserId,
+        currentUserId,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
         error: 'No fields to update'
       });
@@ -496,9 +686,15 @@ exports.updateUserProfile = async (req, res) => {
         updatedProfile = profileResult.rows[0];
       }
 
-
-
       await client.query('COMMIT');
+
+      logger.info('✅ [INFO] User profile updated successfully', {
+        targetUserId,
+        currentUserId,
+        email: req.user?.email,
+        updatedFields: updates,
+        timestamp: new Date().toISOString()
+      });
 
       res.json({
         success: true,
@@ -517,12 +713,20 @@ exports.updateUserProfile = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error updating profile:', error);
+    logger.error('❌ [ERROR] Failed to update user profile', {
+      targetUserId: req.params.id || req.user?.sub,
+      currentUserId: req.user?.sub,
+      email: req.user?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     res.status(500).json({ 
       error: 'Internal server error'
     });
   }
 };
+
 // 🗑️ Delete user profile (soft delete - admin only)
 exports.deleteUserProfile = async (req, res) => {
   try {
@@ -530,7 +734,20 @@ exports.deleteUserProfile = async (req, res) => {
     const currentUserId = req.user?.sub;
     const userRoles = req.user?.roles || [];
 
+    logger.info('📋 [INFO] Attempting to delete user profile', {
+      targetUserId,
+      currentUserId,
+      email: req.user?.email,
+      userRoles,
+      timestamp: new Date().toISOString()
+    });
+
     if (!targetUserId) {
+      logger.warn('🚫 [WARN] Missing user ID for profile deletion', {
+        currentUserId,
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
         error: 'Missing user ID'
       });
@@ -541,9 +758,21 @@ exports.deleteUserProfile = async (req, res) => {
       PERMISSIONS.MANAGE_USERS.includes(role)
     );
 
-    console.log('User roles:', userRoles, 'Has permission:', hasPermission);
+    logger.info('📋 [INFO] Checking permissions for profile deletion', {
+      targetUserId,
+      currentUserId,
+      userRoles,
+      hasPermission,
+      timestamp: new Date().toISOString()
+    });
 
     if (!hasPermission) {
+      logger.warn('🚫 [WARN] Access denied for profile deletion', {
+        targetUserId,
+        currentUserId,
+        userRoles,
+        timestamp: new Date().toISOString()
+      });
       return res.status(403).json({
         error: 'Access denied'
       });
@@ -551,6 +780,12 @@ exports.deleteUserProfile = async (req, res) => {
 
     // Prevent self-deletion
     if (currentUserId === targetUserId) {
+      logger.warn('🚫 [WARN] Attempt to delete own profile', {
+        targetUserId,
+        currentUserId,
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({
         error: 'Cannot delete your own account'
       });
@@ -567,6 +802,11 @@ exports.deleteUserProfile = async (req, res) => {
       );
 
       if (userCheck.rows.length === 0) {
+        logger.warn('🚫 [WARN] User not found for deletion', {
+          targetUserId,
+          currentUserId,
+          timestamp: new Date().toISOString()
+        });
         throw new Error('User not found');
       }
 
@@ -583,6 +823,13 @@ exports.deleteUserProfile = async (req, res) => {
 
       await client.query('COMMIT');
 
+      logger.info('✅ [INFO] User profile deleted successfully', {
+        targetUserId,
+        currentUserId,
+        email: req.user?.email,
+        timestamp: new Date().toISOString()
+      });
+
       res.json({
         success: true,
         message: 'User deleted successfully'
@@ -596,7 +843,14 @@ exports.deleteUserProfile = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error deleting profile:', error);
+    logger.error('❌ [ERROR] Failed to delete user profile', {
+      targetUserId: req.params.id,
+      currentUserId: req.user?.sub,
+      email: req.user?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
 
     if (error.message === 'User not found') {
       return res.status(404).json({

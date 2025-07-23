@@ -10,7 +10,6 @@ const jwt = require('jsonwebtoken');
 const { validateEmail, validatePassword } = require('../validators/validators');
 const axios = require('axios');
 
-
 // Replace with your user-service base URL
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:3002';
 
@@ -40,29 +39,49 @@ function prepareProfileData(data) {
   };
 }
 
-
 async function sendProfileToUserService(userId, profileData) {
-  console.log('🔵 Sending profile to user-service:')
-  console.log('User ID:', userId);
-  console.log('Profile Data:', profileData);
-  console.log('User Service URL:', USER_SERVICE_URL);
+  const payload = {
+    user_id: userId, // Include userId as required by user-service
+    ...profileData // Spread existing profileData fields
+  };
+  
+  console.log('📤 [INFO] Sending profile to user-service', {
+    userId,
+    payload, // Log the complete payload
+    serviceUrl: USER_SERVICE_URL,
+    timestamp: new Date().toISOString()
+  });
   try {
-   const response = await axios.post(
-  `${USER_SERVICE_URL}/api/user/createProfile`, 
-  payload,
-  { headers }
-);
+    const response = await axios.post(
+      `${USER_SERVICE_URL}/api/user/createProfile`,
+      payload,
+      { headers: { 'Content-Type': 'application/json' } }
+    );
 
-    console.log('✅ User-service response:', response.data);
+    console.log('✅ [INFO] User-service response received', {
+      userId,
+      status: response.status,
+      data: response.data,
+      timestamp: new Date().toISOString()
+    });
     return response.data;
   } catch (err) {
-    console.error('❌ Failed to send profile to user-service:', err.message);
+    console.error('❌ [ERROR] Failed to send profile to user-service', {
+      userId,
+      payload, // Log the exact payload sent
+      serviceUrl: USER_SERVICE_URL,
+      error: err.message,
+      response: err.response ? {
+        status: err.response.status,
+        data: err.response.data, // Capture detailed error from user-service
+        headers: err.response.headers
+      } : null,
+      stack: err.stack,
+      timestamp: new Date().toISOString()
+    });
     throw err;
   }
 }
-
-
-
 const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_TIME = 15 * 60 * 1000; 
@@ -122,19 +141,22 @@ exports.register = async (req, res) => {
       bio = ''
     } = req.body;
 
- const profileData = prepareProfileData({
-  email,
-  full_name,
-  phone,
-  date_of_birth,
-  address,
-  avatar_url,
-  bio
-});
+    const profileData = prepareProfileData({
+      email,
+      full_name,
+      phone,
+      date_of_birth,
+      address,
+      avatar_url,
+      bio
+    });
 
-
-
-    console.log('🔵 Profile Information:', profileData);
+    console.log('📋 [INFO] Processing user registration', {
+      email: email.toLowerCase().trim(),
+      role,
+      profileData,
+      timestamp: new Date().toISOString()
+    });
 
     const tokenUser = req.user;
     const privilegedRoles = ['admin', 'user_admin', 'finance_admin', 'audit_admin'];
@@ -185,18 +207,26 @@ exports.register = async (req, res) => {
     const userId = uuidv4();
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // ✅ Create user and assign role in auth DB
+    // Create user and assign role in auth DB
     await createUser(userId, sanitizedEmail, hashedPassword, client);
     await assignRole(userId, role, client);
 
-
-    // ✅ Send profile to user-service
-    console.log('🟣 Sending profile to user-service...');
+    // Send profile to user-service
+    console.log('📤 [INFO] Initiating profile sync with user-service', {
+      userId,
+      email: sanitizedEmail,
+      timestamp: new Date().toISOString()
+    });
     await sendProfileToUserService(userId, profileData);
 
     await client.query('COMMIT');
 
-    console.log(`✅ Registered user ${sanitizedEmail} + profile`);
+    console.log('✅ [INFO] User registration completed successfully', {
+      userId,
+      email: sanitizedEmail,
+      role,
+      timestamp: new Date().toISOString()
+    });
     return res.status(201).json({
       user_id: userId,
       message: `User registered successfully as ${role}`,
@@ -204,7 +234,12 @@ exports.register = async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('[REGISTER ERROR]', error.message);
+    console.error('❌ [ERROR] User registration failed', {
+      email: req.body?.email,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
 
     return res.status(500).json({
       error: 'Registration failed. Please try again later.'
@@ -220,7 +255,10 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
     
     if (!email || !password) {
-      logger.warn('Login attempt with missing credentials');
+      logger.warn('🚫 [WARN] Login attempt with missing credentials', {
+        email: email || 'unknown',
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
@@ -232,7 +270,10 @@ exports.login = async (req, res) => {
 
     // Check rate limiting
     if (isLockedOut(sanitizedEmail)) {
-      logger.warn(`Login attempt blocked due to rate limiting: ${sanitizedEmail}`);
+      logger.warn(`🚫 [WARN] Login attempt blocked due to rate limiting`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.status(429).json({ 
         error: 'Too many failed login attempts. Please try again in 15 minutes.' 
       });
@@ -241,15 +282,20 @@ exports.login = async (req, res) => {
     const user = await findUserByEmail(sanitizedEmail);
     if (!user) {
       recordFailedAttempt(sanitizedEmail);
-      logger.warn(`Login attempt with non-existent email: ${sanitizedEmail}`);
-      // Don't reveal whether user exists or not
+      logger.warn(`🚫 [WARN] Login attempt with non-existent email`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       recordFailedAttempt(sanitizedEmail);
-      logger.warn(`Login failed - invalid password for: ${sanitizedEmail}`);
+      logger.warn(`🚫 [WARN] Login failed - invalid password`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -268,11 +314,12 @@ exports.login = async (req, res) => {
       [tokenId, user.id, token, issuedAt, expiresAt]
     );
 
-    logger.info(`✅ Successful login: ${sanitizedEmail}`, {
+    logger.info(`✅ [INFO] Successful login`, {
       userId: user.id,
       email: sanitizedEmail,
-      roles: roles,
-      tokenId
+      roles,
+      tokenId,
+      timestamp: new Date().toISOString()
     });
 
     res.json({ 
@@ -286,10 +333,11 @@ exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('[LOGIN ERROR] Login process failed', {
+    logger.error('[ERROR] Login process failed', {
       error: error.message,
       stack: error.stack,
-      email: req.body?.email
+      email: req.body?.email,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Login failed. Please try again later.' });
   }
@@ -300,7 +348,9 @@ exports.logout = async (req, res) => {
   try {
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith('Bearer ')) {
-      logger.warn('Logout attempt without proper Authorization header');
+      logger.warn('🚫 [WARN] Logout attempt without proper Authorization header', {
+        timestamp: new Date().toISOString()
+      });
       return res.status(401).json({ error: 'Authorization header is required' });
     }
 
@@ -316,21 +366,25 @@ exports.logout = async (req, res) => {
     );
 
     if (result.rowCount === 0) {
-      logger.warn('Logout attempt with invalid or already revoked token');
+      logger.warn('🚫 [WARN] Logout attempt with invalid or already revoked token', {
+        timestamp: new Date().toISOString()
+      });
       return res.status(404).json({ error: 'Invalid token or already logged out' });
     }
 
-    logger.info('✅ User logged out successfully', {
+    logger.info('✅ [INFO] User logged out successfully', {
       tokenId: result.rows[0].id,
-      userId: result.rows[0].user_id
+      userId: result.rows[0].user_id,
+      timestamp: new Date().toISOString()
     });
 
     res.json({ message: 'Successfully logged out' });
 
   } catch (error) {
-    logger.error('[LOGOUT ERROR] Logout process failed', {
+    logger.error('[ERROR] Logout process failed', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Logout failed. Please try again later.' });
   }
@@ -343,9 +397,10 @@ exports.stillLoggedIn = async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    logger.info(`Token verification successful for: ${req.user.email}`, {
+    logger.info(`✅ [INFO] Token verification successful`, {
       userId: req.user.id,
-      email: req.user.email
+      email: req.user.email,
+      timestamp: new Date().toISOString()
     });
 
     res.json({
@@ -358,10 +413,11 @@ exports.stillLoggedIn = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('[TOKEN VERIFICATION ERROR]', {
+    logger.error('[ERROR] Token verification failed', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id
+      userId: req.user?.id,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Token verification failed' });
   }
@@ -395,7 +451,11 @@ exports.resetPassword = async (req, res) => {
     // Verify current password
     const validCurrentPassword = await bcrypt.compare(currentPassword, user.rows[0].password_hash);
     if (!validCurrentPassword) {
-      logger.warn(`Password reset failed - invalid current password for user: ${userId}`);
+      logger.warn(`🚫 [WARN] Password reset failed - invalid current password`, {
+        userId,
+        email: req.user.email,
+        timestamp: new Date().toISOString()
+      });
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
 
@@ -414,9 +474,10 @@ exports.resetPassword = async (req, res) => {
       [userId]
     );
 
-    logger.info(`🔑 Password reset successfully for user: ${userId}`, {
-      userId: userId,
-      email: req.user.email
+    logger.info(`🔑 [INFO] Password reset successfully`, {
+      userId,
+      email: req.user.email,
+      timestamp: new Date().toISOString()
     });
 
     res.json({ 
@@ -424,10 +485,11 @@ exports.resetPassword = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('[RESET PASSWORD ERROR]', {
+    logger.error('[ERROR] Password reset failed', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id
+      userId: req.user?.id,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Password reset failed. Please try again later.' });
   }
@@ -450,10 +512,13 @@ exports.forgotPassword = async (req, res) => {
     const user = await findUserByEmail(sanitizedEmail);
     
     // Always return success to prevent email enumeration
-    const successMessage = `If an account with that email  exists, we have sent password reset instructions.`;
+    const successMessage = `If an account with that email exists, we have sent password reset instructions.`;
     
     if (!user) {
-      logger.info(`Forgot password request for non-existent email: ${sanitizedEmail}`);
+      logger.info(`📧 [INFO] Forgot password request for non-existent email`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.json({ message: successMessage });
     }
 
@@ -471,10 +536,11 @@ exports.forgotPassword = async (req, res) => {
     // In production, send actual email with reset link
     const resetLink = `https://your-app.com/reset-password?token=${resetToken}&email=${encodeURIComponent(sanitizedEmail)}`;
     
-    logger.info(`Password reset token generated for: ${sanitizedEmail}`, {
+    logger.info(`🔑 [INFO] Password reset token generated`, {
       userId: user.id,
       email: sanitizedEmail,
-      resetLink: resetLink // Remove this in production
+      resetLink, // Remove this in production
+      timestamp: new Date().toISOString()
     });
 
     // TODO: Integrate with email service (SendGrid, SES, etc.)
@@ -483,10 +549,11 @@ exports.forgotPassword = async (req, res) => {
     res.json({ message: successMessage });
 
   } catch (error) {
-    logger.error('[FORGOT PASSWORD ERROR]', {
+    logger.error('[ERROR] Password reset request failed', {
       error: error.message,
       stack: error.stack,
-      email: req.body?.email
+      email: req.body?.email,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Password reset request failed. Please try again later.' });
   }
@@ -526,7 +593,10 @@ exports.completePasswordReset = async (req, res) => {
     `, [sanitizedEmail]);
 
     if (tokenResult.rows.length === 0) {
-      logger.warn(`Invalid or expired password reset token for: ${sanitizedEmail}`);
+      logger.warn(`🚫 [WARN] Invalid or expired password reset token`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ error: 'Invalid or expired reset token' });
     }
 
@@ -535,7 +605,10 @@ exports.completePasswordReset = async (req, res) => {
     // Verify token
     const validToken = await bcrypt.compare(token, resetTokenData.token_hash);
     if (!validToken) {
-      logger.warn(`Invalid password reset token for: ${sanitizedEmail}`);
+      logger.warn(`🚫 [WARN] Invalid password reset token`, {
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
       return res.status(400).json({ error: 'Invalid or expired reset token' });
     }
 
@@ -566,9 +639,10 @@ exports.completePasswordReset = async (req, res) => {
       
       await client.query('COMMIT');
       
-      logger.info(`🔑 Password reset completed for: ${sanitizedEmail}`, {
+      logger.info(`✅ [INFO] Password reset completed successfully`, {
         userId: resetTokenData.user_id,
-        email: sanitizedEmail
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
       });
 
       res.json({ message: 'Password reset successfully. Please log in with your new password.' });
@@ -581,10 +655,11 @@ exports.completePasswordReset = async (req, res) => {
     }
 
   } catch (error) {
-    logger.error('[COMPLETE PASSWORD RESET ERROR]', {
+    logger.error('[ERROR] Password reset completion failed', {
       error: error.message,
       stack: error.stack,
-      email: req.body?.email
+      email: req.body?.email,
+      timestamp: new Date().toISOString()
     });
     res.status(500).json({ error: 'Password reset failed. Please try again later.' });
   }

@@ -1,13 +1,24 @@
 const express = require('express');
+const cors = require('cors');
 const dotenv = require('dotenv');
+const logger = require('./logger');
+const logRouter = require('./routes/log.routes');
 const auditRoutes = require('./routes/audit.routes');
-const app = express();
+
 dotenv.config();
 
+const app = express();
+
+app.use(cors());
 app.use(express.json());
+
+// Mount routes
+app.use('/api/logs', logRouter);
 app.use('/audit-log', auditRoutes);
 
-app.get('/health', (req, res) => res.send({ status: 'Audit service running' }));
+app.get('/health', (req, res) => res.json({ status: 'Audit service running' }));
 
-const PORT = process.env.PORT || 4003;
-app.listen(PORT, () => console.log(`Audit service listening on port ${PORT}`));
+const PORT = process.env.PORT || 4001;
+app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`🚀 Audit service running on port ${PORT}`);
+});
