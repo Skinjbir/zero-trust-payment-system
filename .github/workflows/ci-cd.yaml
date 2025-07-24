@@ -15,17 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check if auth-service changed
+        uses: dorny/paths-filter@v2
         id: authcheck
-        run: |
-          git fetch origin main --depth=2
-          if git diff --name-only origin/main | grep '^auth-service/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+        with:
+          filters: |
+            changed:
+              - 'auth-service/**'
 
       - name: Skip if no changes
         if: steps.authcheck.outputs.changed == 'false'
@@ -33,7 +31,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.authcheck.outputs.changed == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -73,17 +71,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check if wallet-service changed
+        uses: dorny/paths-filter@v2
         id: walletcheck
-        run: |
-          git fetch origin main --depth=2
-          if git diff --name-only origin/main | grep '^wallet-service/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+        with:
+          filters: |
+            changed:
+              - 'wallet-service/**'
 
       - name: Skip if no changes
         if: steps.walletcheck.outputs.changed == 'false'
@@ -91,7 +87,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.walletcheck.outputs.changed == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -131,17 +127,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check if user-service changed
+        uses: dorny/paths-filter@v2
         id: usercheck
-        run: |
-          git fetch origin main --depth=2
-          if git diff --name-only origin/main | grep '^user-service/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+        with:
+          filters: |
+            changed:
+              - 'user-service/**'
 
       - name: Skip if no changes
         if: steps.usercheck.outputs.changed == 'false'
@@ -149,7 +143,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.usercheck.outputs.changed == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -189,17 +183,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check if notification-service changed
+        uses: dorny/paths-filter@v2
         id: notificationcheck
-        run: |
-          git fetch origin main --depth=2
-          if git diff --name-only origin/main | grep '^notification-service/'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+        with:
+          filters: |
+            changed:
+              - 'notification-service/**'
 
       - name: Skip if no changes
         if: steps.notificationcheck.outputs.changed == 'false'
@@ -207,7 +199,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.notificationcheck.outputs.changed == 'true'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
