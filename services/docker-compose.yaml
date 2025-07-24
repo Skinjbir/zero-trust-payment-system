@@ -46,21 +46,6 @@ services:
       - wallet-db-data:/var/lib/postgresql/data
       - ./wallet-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
-  # 📝 Audit DB
-  audit-db:
-    image: postgres:15
-    container_name: audit-db
-    restart: always
-    environment:
-      POSTGRES_DB: audit_db
-      POSTGRES_USER: audit_user
-      POSTGRES_PASSWORD: audit_pass
-    ports:
-      - "5545:5432"   # kept DB port change to avoid conflicts
-    volumes:
-      - audit-db-data:/var/lib/postgresql/data
-      - ./audit-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
-
   # 🔐 Auth Service
   auth-service:
     build: ./auth-service
@@ -70,11 +55,10 @@ services:
       - auth-db
       - user-service
     ports:
-      - "3001:3001"   # original port
+      - "3001:3001"
     environment:
       DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
       USER_SERVICE_URL: http://user-service:3002
-      AUDIT_SERVICE_URL: http://audit-service:4001
 
   # 👤 User Service
   user-service:
@@ -84,10 +68,10 @@ services:
     depends_on:
       - user-db
     ports:
-      - "3002:3002"   # original port
+      - "3002:3002"
     environment:
       DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
-      AUDIT_SERVICE_URL: http://audit-service:4001
+      AUTH_SERVICE_URL: http://auth-service:3001
 
   # 💰 Wallet Service
   wallet-service:
@@ -99,27 +83,13 @@ services:
       - auth-service
       - user-service
     ports:
-      - "3003:3003"   # original port
+      - "3003:3003"
     environment:
       DATABASE_URL: postgres://wallet_user:wallet_pass@wallet-db:5432/wallet_db
       AUTH_SERVICE_URL: http://auth-service:3001
       USER_SERVICE_URL: http://user-service:3002
-      AUDIT_SERVICE_URL: http://audit-service:4001
-
-  # 📜 Audit Service
-  audit-service:
-    build: ./audit-service
-    container_name: audit-service
-    restart: always
-    depends_on:
-      - audit-db
-    ports:
-      - "4001:4001"   # original port
-    environment:
-      DATABASE_URL: postgres://audit_user:audit_pass@audit-db:5432/audit_db
 
 volumes:
   auth-db-data:
   user-db-data:
   wallet-db-data:
-  audit-db-data:

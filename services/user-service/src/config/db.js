@@ -6,7 +6,7 @@ const pool = new Pool({
 });
 
 pool.on('connect', () => {
-  console.log('🟢 Connected to PostgreSQL (wallet-db)');
+  console.log(' Connected to PostgreSQL (wallet-db)');
 });
 
 module.exports = pool;
