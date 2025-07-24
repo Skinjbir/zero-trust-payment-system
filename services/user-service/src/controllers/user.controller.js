@@ -1,6 +1,7 @@
 require('dotenv').config();
 const db = require('../config/db');
 const { getUserByIdFromDB, checkUserExists, insertProfile, insertUser } = require('../models/user.model');
+const { sendNotification } = require('../utils/notification.utils');
 
 const ROLES = {
   USER: 'user',
@@ -43,7 +44,6 @@ const checkPermission = (requiredRoles) => {
     next();
   };
 };
-
 
 // Input validation helpers
 const validateEmail = (email) => {
@@ -134,6 +134,7 @@ exports.getProfile = async (req, res) => {
     });
   }
 };
+
 // 🔎 Get user by ID
 exports.getUserById = async (req, res) => {
   try {
@@ -187,6 +188,7 @@ exports.getUserById = async (req, res) => {
     });
   }
 };
+
 // 🧾 Create user profile (called by auth service)
 exports.createProfile = async (req, res) => {
   try {
@@ -266,6 +268,15 @@ exports.createProfile = async (req, res) => {
 
       await client.query('COMMIT');
 
+      // Send notification for profile creation
+      await sendNotification({
+        type: 'PROFILE_CREATED',
+        user_id: sanitizedData.user_id,
+        email: sanitizedData.email,
+        full_name: sanitizedData.full_name,
+        timestamp: new Date().toISOString()
+      });
+
       res.status(201).json({
         success: true,
         message: 'User profile created successfully',
@@ -296,7 +307,6 @@ exports.createProfile = async (req, res) => {
     });
   }
 };
-
 
 // 📊 Get all users (admin/user_admin/audit_admin only)
 exports.getAllUsers = async (req, res) => {
@@ -382,15 +392,12 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-
-
 // ✏️ Update user profile
 exports.updateUserProfile = async (req, res) => {
   try {
     const targetUserId = req.params.id || req.user?.sub;
     const currentUserId = req.user?.sub;
     const userRole = req.user?.role || ROLES.USER;
-    
     
     if (!targetUserId) {
       return res.status(400).json({ 
@@ -496,9 +503,16 @@ exports.updateUserProfile = async (req, res) => {
         updatedProfile = profileResult.rows[0];
       }
 
-
-
       await client.query('COMMIT');
+
+      // Send notification for profile update
+      await sendNotification({
+        type: 'PROFILE_UPDATED',
+        user_id: targetUserId,
+        updated_fields: updates.map(update => update.split(' = ')[0]), // Extract field names
+        updated_by: currentUserId,
+        timestamp: new Date().toISOString()
+      });
 
       res.json({
         success: true,
@@ -523,6 +537,7 @@ exports.updateUserProfile = async (req, res) => {
     });
   }
 };
+
 // 🗑️ Delete user profile (soft delete - admin only)
 exports.deleteUserProfile = async (req, res) => {
   try {
@@ -582,6 +597,14 @@ exports.deleteUserProfile = async (req, res) => {
       );
 
       await client.query('COMMIT');
+
+      // Send notification for profile deletion
+      await sendNotification({
+        type: 'PROFILE_DELETED',
+        user_id: targetUserId,
+        deleted_by: currentUserId,
+        timestamp: new Date().toISOString()
+      });
 
       res.json({
         success: true,
