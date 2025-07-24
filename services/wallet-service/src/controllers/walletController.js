@@ -1,37 +1,43 @@
+// walletController.js - Handles wallet and transaction operations
+
+// Dependencies
 const Wallet = require('../models/walletModel');
 const Transaction = require('../models/transactionModel');
 const db = require('../config/db');
-
-// Configuration constants
 const { CONFIG } = require('../config/walletSettings');
-
 const {
   validateWalletCreation,
   validateTransaction,
   validateTransfer,
-  validateWalletId,  } = require('../middlewares/validate.middleware');
+  validateWalletId,
+} = require('../middlewares/validate.middleware');
+const {
+  handleValidationErrors,
+  generateTransactionId,
+  formatAmount,
+  logTransaction,
+} = require('../utils/utils');
 
-  const {handleValidationErrors,  generateTransactionId, formatAmount, logTransaction} = require('../utils/utils');
-
-// Enhanced authentication middleware
+// Authentication Middleware
 const requireAuth = (req, res, next) => {
+  // Verify user authentication
   if (!req.user || !req.userId) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       error: 'Unauthorized',
       message: 'Valid authentication token required'
     });
   }
-  // User info is available on req.user for downstream handlers
   console.log('Authenticated user:', req.user);
   next();
 };
 
-// Optional middleware to enforce admin access if you want
+// Admin Authorization Middleware
 const requireAdmin = (req, res, next) => {
+  // Verify admin role
   console.log('Checking admin access...');
   console.log('Authenticated user roles:', req.user.roles);
   console.log('Authenticated user ID:', req.user.sub);
-
+  
   if (!req.user || !req.user.roles || !req.user.roles.includes('admin')) {
     return res.status(403).json({
       error: 'Forbidden',
@@ -41,28 +47,28 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-
-// Enhanced wallet operations
+// Wallet Operations
 exports.createWallet = [
   requireAuth,
   ...validateWalletCreation,
   handleValidationErrors,
   async (req, res) => {
+    // Create a new wallet for authenticated user
     const userId = req.user.sub;
     const currency = (req.body.currency || 'USD').toUpperCase();
     const transactionId = generateTransactionId();
 
     try {
-      // Check if wallet already exists
+      // Check for existing wallet
       const existing = await Wallet.findByUserId(userId, currency);
       if (existing) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           error: 'Wallet already exists',
           message: `A ${currency} wallet already exists for this user`
         });
       }
 
-      // Create wallet with additional metadata
+      // Prepare wallet data
       const walletData = {
         userId,
         currency,
@@ -74,8 +80,10 @@ exports.createWallet = [
         }
       };
 
+      // Create wallet
       const wallet = await Wallet.createWallet(walletData);
 
+      // Log wallet creation
       logTransaction('wallet_creation', {
         'Transaction ID': transactionId,
         'User ID': userId,
@@ -83,6 +91,7 @@ exports.createWallet = [
         'Wallet ID': wallet.id
       });
 
+      // Return success response
       res.status(201).json({
         success: true,
         message: 'Wallet created successfully',
@@ -98,12 +107,14 @@ exports.createWallet = [
         transactionId
       });
     } catch (err) {
+      // Log error
       logTransaction('wallet_creation', {
         'Transaction ID': transactionId,
         'User ID': userId,
         'Currency': currency
       }, err);
 
+      // Return error response
       res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to create wallet',
@@ -113,15 +124,14 @@ exports.createWallet = [
   }
 ];
 
-
-
-
 exports.getOwnWallets = [
   requireAuth,
   async (req, res) => {
+    // Retrieve all wallets for authenticated user
     const userId = req.user.sub;
     const currency = req.query.currency?.toUpperCase() || null;
     console.log(`[WALLET] Fetching wallets for user ${userId}${currency ? ` with currency ${currency}` : ''}`);
+
     try {
       const wallets = await Wallet.findAllByUserId(userId, currency);
       if (wallets.length === 0) {
@@ -130,7 +140,9 @@ exports.getOwnWallets = [
           message: currency ? `No ${currency} wallets found for this user` : 'No wallets found for this user'
         });
       }
-      return res.status(200).json({
+
+      // Format and return wallet data
+      res.status(200).json({
         success: true,
         data: wallets.map(wallet => ({
           id: wallet.id,
@@ -147,7 +159,8 @@ exports.getOwnWallets = [
         userId,
         currency: currency || 'ALL'
       }, err);
-      return res.status(500).json({
+      
+      res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to retrieve wallets'
       });
@@ -155,23 +168,23 @@ exports.getOwnWallets = [
   }
 ];
 
-
 exports.deleteOwnWallet = [
   requireAuth,
   async (req, res) => {
+    // Delete a wallet for authenticated user
     const userId = req.user.sub;
     const currency = req.query.currency?.toUpperCase();
 
     try {
       const wallet = await Wallet.findByUserId(userId, currency);
       if (!wallet) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Wallet not found',
           message: 'No wallet found for this user'
         });
       }
 
-      // Check if wallet has balance
+      // Check if wallet has zero balance
       if (parseFloat(wallet.balance) > 0) {
         return res.status(400).json({
           error: 'Cannot delete wallet',
@@ -179,14 +192,17 @@ exports.deleteOwnWallet = [
         });
       }
 
+      // Delete wallet
       await Wallet.deleteWallet(wallet.id);
-      
+
+      // Log deletion
       logTransaction('wallet_deletion', {
         'User ID': userId,
         'Wallet ID': wallet.id,
         'Currency': wallet.currency
       });
 
+      // Return success response
       res.status(200).json({
         success: true,
         message: 'Wallet deleted successfully'
@@ -205,46 +221,109 @@ exports.deleteOwnWallet = [
   }
 ];
 
+// Transaction Operations
+exports.getOwnTransactions = [
+  requireAuth,
+  async (req, res) => {
+    // Retrieve transactions for authenticated user
+    const userId = req.user.sub;
+    const currency = req.query.currency?.toUpperCase() || null;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const offset = parseInt(req.query.offset) || 0;
+    const type = req.query.type?.toLowerCase();
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    console.log(`[TRANSACTIONS] Fetching transactions for user ${userId}${currency ? ` in ${currency}` : ''}`);
+
+    try {
+      // Fetch user wallets
+      const userWallets = await Wallet.findAllByUserId(userId, currency);
+      if (!userWallets || userWallets.length === 0) {
+        return res.status(404).json({
+          error: 'Wallet not found',
+          message: currency
+            ? `No wallet found for this user in ${currency}`
+            : 'No wallets found for this user'
+        });
+      }
+
+      // Prepare transaction filters
+      const walletIds = userWallets.map(wallet => wallet.id);
+      const filters = {
+        walletIds,
+        type,
+        startDate,
+        endDate,
+        limit,
+        offset
+      };
+
+      // Fetch transactions
+      const transactions = await Transaction.getTransactionsByWalletIds(filters);
+      const totalCount = await Transaction.countTransactionsByWalletIds(walletIds, filters);
+
+      // Return transaction data with pagination
+      res.status(200).json({
+        success: true,
+        data: {
+          transactions,
+          pagination: {
+            limit,
+            offset,
+            totalCount,
+            hasMore: (offset + limit) < totalCount
+          }
+        }
+      });
+    } catch (err) {
+      console.error('[TRANSACTIONS] Error fetching transactions:', err);
+      logTransaction('get_transactions', {
+        userId,
+        currency: currency || 'ALL'
+      }, err);
+
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Failed to retrieve transactions'
+      });
+    }
+  }
+];
+
 exports.deposit = [
   requireAuth,
   ...validateTransaction,
   handleValidationErrors,
   async (req, res) => {
+    // Process deposit to user's wallet
     const userId = req.user.sub;
     const { amount, referenceId } = req.body;
     const currency = req.body.currency?.toUpperCase() || 'USD';
     const transactionId = generateTransactionId();
-
     const parsedAmount = formatAmount(amount);
-
     let client;
+
     try {
+      // Initialize database transaction
       client = await db.getClient();
       await client.query('BEGIN');
-
-      // Set transaction timeout
       await client.query(`SET statement_timeout = ${CONFIG.TRANSACTION_TIMEOUT}`);
 
-      // Lock wallet for update with timeout
+      // Lock wallet for update
       const wallet = await Wallet.lockWalletForUpdate(userId, client, currency);
       if (!wallet) {
         throw new Error('Wallet not found or inactive');
       }
-      // Check wallet status
-      console.log(`Checking wallet status for user ${userId} with currency ${currency}`);
-      console.log(`Wallet status: ${wallet.is_active}`);
       if (!wallet.is_active) {
-  throw new Error('Wallet is not active');
-}
+        throw new Error('Wallet is not active');
+      }
 
-
+      // Update balance
       const currentBalance = parseFloat(wallet.balance);
       const newBalance = formatAmount(currentBalance + parsedAmount);
-
-      // Update wallet balance
       await Wallet.updateBalance(wallet.id, newBalance, client);
 
-      // Create transaction record
+      // Log transaction
       const transactionData = {
         walletId: wallet.id,
         type: 'credit',
@@ -260,11 +339,12 @@ exports.deposit = [
           transactionId
         }
       };
-
       await Transaction.logTransaction(transactionData, client);
 
+      // Commit transaction
       await client.query('COMMIT');
 
+      // Log success
       logTransaction('deposit', {
         'Transaction ID': transactionId,
         'User ID': userId,
@@ -274,6 +354,7 @@ exports.deposit = [
         'New Balance': newBalance
       });
 
+      // Return success response
       res.status(200).json({
         success: true,
         message: 'Deposit successful',
@@ -287,7 +368,6 @@ exports.deposit = [
       });
     } catch (err) {
       if (client) await client.query('ROLLBACK');
-      
       logTransaction('deposit', {
         'Transaction ID': transactionId,
         'User ID': userId,
@@ -296,7 +376,8 @@ exports.deposit = [
         'Reference ID': referenceId || 'N/A'
       }, err);
 
-      const statusCode = err.message.includes('not found') ? 404 : 
+      // Determine error status
+      const statusCode = err.message.includes('not found') ? 404 :
                         err.message.includes('not active') ? 400 : 500;
 
       res.status(statusCode).json({
@@ -315,19 +396,18 @@ exports.withdraw = [
   ...validateTransaction,
   handleValidationErrors,
   async (req, res) => {
+    // Process withdrawal from user's wallet
     const userId = req.user.sub;
     const { amount, referenceId } = req.body;
     const currency = req.body.currency?.toUpperCase() || 'USD';
     const transactionId = generateTransactionId();
-
     const parsedAmount = formatAmount(amount);
-
     let client;
+
     try {
+      // Initialize database transaction
       client = await db.getClient();
       await client.query('BEGIN');
-
-      // Set transaction timeout
       await client.query(`SET statement_timeout = ${CONFIG.TRANSACTION_TIMEOUT}`);
 
       // Lock wallet for update
@@ -335,25 +415,21 @@ exports.withdraw = [
       if (!wallet) {
         throw new Error('Wallet not found or inactive');
       }
+      if (!wallet.is_active) {
+        throw new Error('Wallet is not active');
+      }
 
-if (!wallet.is_active) {
-  throw new Error('Wallet is not active');
-}
-
-
+      // Check balance
       const currentBalance = parseFloat(wallet.balance);
-      
-      // Check sufficient balance
       if (currentBalance < parsedAmount) {
         throw new Error(`Insufficient balance. Available: ${currentBalance}, Requested: ${parsedAmount}`);
       }
 
+      // Update balance
       const newBalance = formatAmount(currentBalance - parsedAmount);
-
-      // Update wallet balance
       await Wallet.updateBalance(wallet.id, newBalance, client);
 
-      // Create transaction record
+      // Log transaction
       const transactionData = {
         walletId: wallet.id,
         type: 'debit',
@@ -369,11 +445,12 @@ if (!wallet.is_active) {
           transactionId
         }
       };
-
       await Transaction.logTransaction(transactionData, client);
 
+      // Commit transaction
       await client.query('COMMIT');
 
+      // Log success
       logTransaction('withdraw', {
         'Transaction ID': transactionId,
         'User ID': userId,
@@ -383,6 +460,7 @@ if (!wallet.is_active) {
         'New Balance': newBalance
       });
 
+      // Return success response
       res.status(200).json({
         success: true,
         message: 'Withdrawal successful',
@@ -396,7 +474,6 @@ if (!wallet.is_active) {
       });
     } catch (err) {
       if (client) await client.query('ROLLBACK');
-      
       logTransaction('withdraw', {
         'Transaction ID': transactionId,
         'User ID': userId,
@@ -405,7 +482,8 @@ if (!wallet.is_active) {
         'Reference ID': referenceId || 'N/A'
       }, err);
 
-      const statusCode = err.message.includes('not found') ? 404 : 
+      // Determine error status
+      const statusCode = err.message.includes('not found') ? 404 :
                         err.message.includes('Insufficient balance') ? 400 :
                         err.message.includes('not active') ? 400 : 500;
 
@@ -425,16 +503,13 @@ exports.transfer = [
   ...validateTransfer,
   handleValidationErrors,
   async (req, res) => {
+    // Process transfer between wallets
     const userId = req.user.sub;
     console.log(`[TRANSFER] User ${userId} initiating transfer...`);
     const { recipientId, amount, referenceId } = req.body;
     console.log(`[TRANSFER] User ${userId} transferring ${amount} to recipient ${recipientId}`);
     const currency = req.body.currency?.toUpperCase() || 'USD';
     const transactionId = generateTransactionId();
-
-
-
-
     const parsedAmount = formatAmount(amount);
 
     // Prevent self-transfer
@@ -447,58 +522,44 @@ exports.transfer = [
 
     let client;
     try {
+      // Initialize database transaction
       client = await db.getClient();
       await client.query('BEGIN');
-
-      // Set transaction timeout
       await client.query(`SET statement_timeout = ${CONFIG.TRANSACTION_TIMEOUT}`);
 
-      // Lock sender's wallet
+      // Lock wallets
       const senderWallet = await Wallet.lockWalletForUpdate(userId, client, currency);
-
-      if (!senderWallet || !senderWallet.is_active ) {
-          throw new Error('Sender wallet not found or inactive');
+      if (!senderWallet || !senderWallet.is_active) {
+        throw new Error('Sender wallet not found or inactive');
       }
-      // Lock recipient's wallet
-      console.log(`[TRANSFER] Locking recipient wallet for user ${recipientId}...`);
-      console.log(`[TRANSFER] Using currency: ${currency}`);
+
+      const recipientWallet = await Wallet.lockWalletForUpdate(recipientId, client, currency);
+      if (!recipientWallet || !recipientWallet.is_active) {
+        throw new Error('Recipient wallet not found or inactive');
+      }
+
+      // Log transfer details
       console.log(`[TRANSFER] Transaction ID: ${transactionId}`);
       console.log(`[TRANSFER] Amount to transfer: ${parsedAmount}`);
-      console.log(`[TRANSFER] Reference ID: ${referenceId || 'N/A'}`);
       console.log(`[TRANSFER] Sender wallet ID: ${senderWallet.id}`);
       console.log(`[TRANSFER] Sender wallet balance: ${senderWallet.balance}`);
-      console.log(`[TRANSFER] Sender wallet status: ${senderWallet.is_active}`);
-      console.log(`[TRANSFER] Sender wallet currency: ${senderWallet.currency}`);
-      console.log(`[TRANSFER] Recipient ID: ${recipientId}`);
-      console.log(`[TRANSFER] Recipient currency: ${currency}`);
-      console.log(`[TRANSFER] Recipient wallet ID: ${senderWallet.id}`);
-      console.log(`[TRANSFER] Recipient wallet balance: ${senderWallet.balance}`);
-      console.log(`[TRANSFER] Recipient wallet status: ${senderWallet.is_active}`);
-      console.log(`[TRANSFER] Recipient wallet currency: ${senderWallet.currency}`);
-      const recipientWallet = await Wallet.lockWalletForUpdate(recipientId, client, currency);
-    if (!recipientWallet || !recipientWallet.is_active) {
-  throw new Error('Recipient wallet not found or inactive');
-}
+      console.log(`[TRANSFER] Recipient wallet ID: ${recipientWallet.id}`);
+      console.log(`[TRANSFER] Recipient wallet balance: ${recipientWallet.balance}`);
 
-      
-
+      // Check balance
       const senderBalance = parseFloat(senderWallet.balance);
       const recipientBalance = parseFloat(recipientWallet.balance);
-
-      // Check sufficient balance
       if (senderBalance < parsedAmount) {
         throw new Error(`Insufficient balance. Available: ${senderBalance}, Requested: ${parsedAmount}`);
       }
 
-      // Calculate new balances
+      // Update balances
       const newSenderBalance = formatAmount(senderBalance - parsedAmount);
       const newRecipientBalance = formatAmount(recipientBalance + parsedAmount);
-
-      // Update balances
       await Wallet.updateBalance(senderWallet.id, newSenderBalance, client);
       await Wallet.updateBalance(recipientWallet.id, newRecipientBalance, client);
 
-      // Create transaction records
+      // Log transactions
       const baseTransactionData = {
         referenceId: referenceId || transactionId,
         performedBy: userId,
@@ -510,7 +571,6 @@ exports.transfer = [
         }
       };
 
-      // Sender's transaction (debit)
       await Transaction.logTransaction({
         ...baseTransactionData,
         walletId: senderWallet.id,
@@ -525,7 +585,6 @@ exports.transfer = [
         }
       }, client);
 
-      // Recipient's transaction (credit)
       await Transaction.logTransaction({
         ...baseTransactionData,
         walletId: recipientWallet.id,
@@ -540,8 +599,10 @@ exports.transfer = [
         }
       }, client);
 
+      // Commit transaction
       await client.query('COMMIT');
 
+      // Log success
       logTransaction('transfer', {
         'Transaction ID': transactionId,
         'Sender ID': userId,
@@ -553,6 +614,7 @@ exports.transfer = [
         'Recipient Balance': newRecipientBalance
       });
 
+      // Return success response
       res.status(200).json({
         success: true,
         message: 'Transfer successful',
@@ -567,7 +629,6 @@ exports.transfer = [
       });
     } catch (err) {
       if (client) await client.query('ROLLBACK');
-      
       logTransaction('transfer', {
         'Transaction ID': transactionId,
         'Sender ID': userId,
@@ -577,7 +638,8 @@ exports.transfer = [
         'Reference ID': referenceId || 'N/A'
       }, err);
 
-      const statusCode = err.message.includes('not found') ? 404 : 
+      // Determine error status
+      const statusCode = err.message.includes('not found') ? 404 :
                         err.message.includes('Insufficient balance') ? 400 :
                         err.message.includes('inactive') ? 400 : 500;
 
@@ -591,88 +653,227 @@ exports.transfer = [
     }
   }
 ];
-exports.getOwnTransactions = [
-  requireAuth,
-  async (req, res) => {
-    const userId = req.user.sub; // Authenticated user
-    const currency = req.query.currency?.toUpperCase() || null;
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100
-    const offset = parseInt(req.query.offset) || 0;
-    const type = req.query.type?.toLowerCase();
-    const startDate = req.query.startDate;
-    const endDate = req.query.endDate;
 
-    console.log(`[TRANSACTIONS] Fetching transactions for user ${userId}${currency ? ` in ${currency}` : ''}`);
+exports.walletDebit = [
+  requireAuth,
+  ...validateTransaction,
+  handleValidationErrors,
+  async (req, res) => {
+    // Process debit from user's wallet
+    const userId = req.user.sub;
+    const { amount, referenceId } = req.body;
+    const currency = req.body.currency?.toUpperCase() || 'USD';
+    const transactionId = generateTransactionId();
+    const parsedAmount = formatAmount(amount);
+    let client;
 
     try {
-      // Fetch all wallets owned by the user (optionally filtered by currency)
-      const userWallets = await Wallet.findAllByUserId(userId, currency);
+      // Initialize database transaction
+      client = await db.getClient();
+      await client.query('BEGIN');
+      await client.query(`SET statement_timeout = ${CONFIG.TRANSACTION_TIMEOUT}`);
 
-      if (!userWallets || userWallets.length === 0) {
-        return res.status(404).json({
-          error: 'Wallet not found',
-          message: currency
-            ? `No wallet found for this user in ${currency}`
-            : 'No wallets found for this user'
-        });
+      // Lock wallet for update
+      const wallet = await Wallet.lockWalletForUpdate(userId, client, currency);
+      if (!wallet) {
+        throw new Error('Wallet not found or inactive');
+      }
+      if (!wallet.is_active) {
+        throw new Error('Wallet is not active');
       }
 
-      // Collect wallet IDs for filtering transactions
-      const walletIds = userWallets.map(wallet => wallet.id);
+      // Check balance
+      const currentBalance = parseFloat(wallet.balance);
+      if (currentBalance < parsedAmount) {
+        throw new Error(`Insufficient balance. Available: ${currentBalance}, Requested: ${parsedAmount}`);
+      }
 
-      const filters = {
-        walletIds, // Pass an array of wallet IDs for filtering
-        type,
-        startDate,
-        endDate,
-        limit,
-        offset
+      // Update balance
+      const newBalance = formatAmount(currentBalance - parsedAmount);
+      await Wallet.updateBalance(wallet.id, newBalance, client);
+
+      // Log transaction
+      const transactionData = {
+        walletId: wallet.id,
+        type: 'debit',
+        amount: parsedAmount,
+        balanceSnapshot: newBalance,
+        referenceId: referenceId || transactionId,
+        performedBy: userId,
+        role: req.user.role || 'user.customer',
+        metadata: {
+          source: 'debit',
+          userAgent: req.get('User-Agent'),
+          ipAddress: req.ip,
+          transactionId
+        }
       };
+      await Transaction.logTransaction(transactionData, client);
 
-      const transactions = await Transaction.getTransactionsByWalletIds(filters);
-      const totalCount = await Transaction.countTransactionsByWalletIds(walletIds, filters);
+      // Commit transaction
+      await client.query('COMMIT');
 
-      return res.status(200).json({
+      // Log success
+      logTransaction('debit', {
+        'Transaction ID': transactionId,
+        'User ID': userId,
+        'Amount': parsedAmount,
+        'Currency': wallet.currency,
+        'Reference ID': referenceId || 'N/A',
+        'New Balance': newBalance
+      });
+
+      // Return success response
+      res.status(200).json({
         success: true,
+        message: 'Debit successful',
         data: {
-          transactions,
-          pagination: {
-            limit,
-            offset,
-            totalCount,
-            hasMore: (offset + limit) < totalCount
-          }
+          transactionId,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          newBalance,
+          referenceId: referenceId || transactionId
         }
       });
     } catch (err) {
-      console.error('[TRANSACTIONS] Error fetching transactions:', err);
-
-      logTransaction('get_transactions', {
-        userId,
-        currency: currency || 'ALL'
+      if (client) await client.query('ROLLBACK');
+      logTransaction('debit', {
+        'Transaction ID': transactionId,
+        'User ID': userId,
+        'Amount': parsedAmount,
+        'Currency': currency,
+        'Reference ID': referenceId || 'N/A'
       }, err);
 
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'Failed to retrieve transactions'
+      // Determine error status
+      const statusCode = err.message.includes('not found') ? 404 :
+                        err.message.includes('Insufficient balance') ? 400 :
+                        err.message.includes('not active') ? 400 : 500;
+
+      res.status(statusCode).json({
+        error: statusCode === 500 ? 'Internal server error' : 'Transaction failed',
+        message: err.message,
+        transactionId
       });
+    } finally {
+      if (client) client.release();
     }
   }
 ];
 
+exports.walletCredit = [
+  requireAuth,
+  ...validateTransaction,
+  handleValidationErrors,
+  async (req, res) => {
+    // Process credit to user's wallet
+    const userId = req.user.sub;
+    const { amount, referenceId } = req.body;
+    const currency = req.body.currency?.toUpperCase() || 'USD';
+    const transactionId = generateTransactionId();
+    const parsedAmount = formatAmount(amount);
+    let client;
 
+    try {
+      // Initialize database transaction
+      client = await db.getClient();
+      await client.query('BEGIN');
+      await client.query(`SET statement_timeout = ${CONFIG.TRANSACTION_TIMEOUT}`);
 
-// Finance Admin endpoints
+      // Lock wallet for update
+      const wallet = await Wallet.lockWalletForUpdate(userId, client, currency);
+      if (!wallet) {
+        throw new Error('Wallet not found or inactive');
+      }
+      if (!wallet.is_active) {
+        throw new Error('Wallet is not active');
+      }
+
+      // Update balance
+      const currentBalance = parseFloat(wallet.balance);
+      const newBalance = formatAmount(currentBalance + parsedAmount);
+      await Wallet.updateBalance(wallet.id, newBalance, client);
+
+      // Log transaction
+      const transactionData = {
+        walletId: wallet.id,
+        type: 'credit',
+        amount: parsedAmount,
+        balanceSnapshot: newBalance,
+        referenceId: referenceId || transactionId,
+        performedBy: userId,
+        role: req.user.role || 'user.customer',
+        metadata: {
+          source: 'credit',
+          userAgent: req.get('User-Agent'),
+          ipAddress: req.ip,
+          transactionId
+        }
+      };
+      await Transaction.logTransaction(transactionData, client);
+
+      // Commit transaction
+      await client.query('COMMIT');
+
+      // Log success
+      logTransaction('credit', {
+        'Transaction ID': transactionId,
+        'User ID': userId,
+        'Amount': parsedAmount,
+        'Currency': wallet.currency,
+        'Reference ID': referenceId || 'N/A',
+        'New Balance': newBalance
+      });
+
+      // Return success response
+      res.status(200).json({
+        success: true,
+        message: 'Credit successful',
+        data: {
+          transactionId,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          newBalance,
+          referenceId: referenceId || transactionId
+        }
+      });
+    } catch (err) {
+      if (client) await client.query('ROLLBACK');
+      logTransaction('credit', {
+        'Transaction ID': transactionId,
+        'User ID': userId,
+        'Amount': parsedAmount,
+        'Currency': currency,
+        'Reference ID': referenceId || 'N/A'
+      }, err);
+
+      // Determine error status
+      const statusCode = err.message.includes('not found') ? 404 :
+                        err.message.includes('not active') ? 400 : 500;
+
+      res.status(statusCode).json({
+        error: statusCode === 500 ? 'Internal server error' : 'Transaction failed',
+        message: err.message,
+        transactionId
+      });
+    } finally {
+      if (client) client.release();
+    }
+  }
+];
+
+// Admin Operations
 exports.getWalletById = [
   requireAuth,
   requireAdmin,
   ...validateWalletId,
   handleValidationErrors,
   async (req, res) => {
+    // Retrieve wallet by ID for admin
     try {
       const wallet = await Wallet.findById(req.params.walletId);
       if (!wallet) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Wallet not found',
           message: 'No wallet found with this ID'
         });
@@ -701,6 +902,7 @@ exports.getUserWallets = [
   requireAdmin,
   handleValidationErrors,
   async (req, res) => {
+    // Retrieve all wallets for a specific user (admin only)
     try {
       const wallets = await Wallet.findAllByUserId(req.params.userId);
       res.status(200).json({
@@ -727,17 +929,17 @@ exports.activateWallet = [
   ...validateWalletId,
   handleValidationErrors,
   async (req, res) => {
+    // Activate a wallet (admin only)
     try {
       const wallet = await Wallet.findById(req.params.walletId);
       if (!wallet) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Wallet not found',
           message: 'No wallet found with this ID'
         });
       }
 
       await Wallet.updateStatus(req.params.walletId, 'true');
-      
       logTransaction('wallet_activation', {
         'Wallet ID': req.params.walletId,
         'Admin ID': req.user.sub
@@ -767,17 +969,17 @@ exports.deactivateWallet = [
   ...validateWalletId,
   handleValidationErrors,
   async (req, res) => {
+    // Deactivate a wallet (admin only)
     try {
       const wallet = await Wallet.findById(req.params.walletId);
       if (!wallet) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Wallet not found',
           message: 'No wallet found with this ID'
         });
       }
 
       await Wallet.updateStatus(req.params.walletId, 'false');
-      
       logTransaction('wallet_deactivation', {
         'Wallet ID': req.params.walletId,
         'Admin ID': req.user.sub
@@ -801,10 +1003,11 @@ exports.deactivateWallet = [
   }
 ];
 
-
-
 exports.getAllWallets = [
+  requireAuth,
+  requireAdmin,
   async (req, res) => {
+    // Retrieve all wallets in the system (admin only)
     try {
       const wallets = await Wallet.findAll();
       res.status(200).json({
@@ -824,11 +1027,11 @@ exports.getAllWallets = [
   }
 ];
 
-
 exports.getTransactionsByUserId = [
   requireAuth,
   requireAdmin,
   async (req, res) => {
+    // Retrieve transactions for a specific user (admin only)
     const userId = req.params.userId;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const offset = parseInt(req.query.offset) || 0;
@@ -846,8 +1049,8 @@ exports.getTransactionsByUserId = [
         });
       }
 
+      // Prepare transaction filters
       const walletIds = userWallets.map(wallet => wallet.id);
-
       const filters = {
         walletIds,
         type,
@@ -857,10 +1060,12 @@ exports.getTransactionsByUserId = [
         offset
       };
 
+      // Fetch transactions
       const transactions = await Transaction.getTransactionsByUserId(filters);
       const totalCount = await Transaction.countTransactionsByWalletIds(walletIds, filters);
 
-      return res.status(200).json({
+      // Return transaction data with pagination
+      res.status(200).json({
         success: true,
         data: {
           transactions,
@@ -874,7 +1079,7 @@ exports.getTransactionsByUserId = [
       });
     } catch (err) {
       console.error('[TRANSACTIONS] Error fetching user transactions:', err);
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to retrieve transactions'
       });
@@ -882,25 +1087,19 @@ exports.getTransactionsByUserId = [
   }
 ];
 
-
-
-
-
-
-            
-          
-
 exports.getAllSystemTransactions = [
   requireAuth,
   requireAdmin,
   async (req, res) => {
-    const limit = Math.min(parseInt(req.query.limit) || 50, 100); // Max 100
+    // Retrieve all transactions in the system (admin only)
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const offset = parseInt(req.query.offset) || 0;
     const type = req.query.type?.toLowerCase();
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
 
     try {
+      // Fetch transactions
       const transactions = await Transaction.getAllTransactions({
         type,
         startDate,
@@ -911,12 +1110,13 @@ exports.getAllSystemTransactions = [
       if (transactions.length === 0) {
         return res.status(404).json({
           error: 'No transactions found',
-          message: 'No transactions match the provided filters'  
+          message: 'No transactions match the provided filters'
         });
-      } 
-const totalCount = await Transaction.countAllTransactions({ type, startDate, endDate });
+      }
+      const totalCount = await Transaction.countAllTransactions({ type, startDate, endDate });
 
-      return res.status(200).json({
+      // Return transaction data with pagination
+      res.status(200).json({
         success: true,
         data: {
           transactions,
@@ -930,12 +1130,11 @@ const totalCount = await Transaction.countAllTransactions({ type, startDate, end
       });
     } catch (err) {
       console.error('[TRANSACTIONS] Error fetching all transactions:', err);
-
       logTransaction('get_all_transactions', {
         'Admin ID': req.user.sub
       }, err);
 
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Internal server error',
         message: 'Failed to retrieve transactions'
       });
@@ -943,14 +1142,14 @@ const totalCount = await Transaction.countAllTransactions({ type, startDate, end
   }
 ];
 
-
-// Health check endpoint
+// Health Check
 exports.healthCheck = async (req, res) => {
+  // Check database connectivity
   try {
     const client = await db.getClient();
     await client.query('SELECT 1');
     client.release();
-    
+
     res.status(200).json({
       success: true,
       message: 'Wallet service is healthy',
