@@ -25,6 +25,8 @@ module.exports = async (req, res, next) => {
       [token]
     );
 
+
+    
     if (result.rowCount === 0) {
       logger.warn('Access denied — token is not registered');
       return res.status(403).json({ error: 'Unrecognized token' });
