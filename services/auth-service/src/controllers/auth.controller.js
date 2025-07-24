@@ -1,4 +1,3 @@
-// controllers/auth.controller.js
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../config/db');
@@ -6,10 +5,9 @@ const { generateToken } = require('../utils/jwt.util');
 const logger = require('../utils/logger.util');
 const { findUserByEmail, createUser } = require('../models/user.model');
 const { getUserRoles, assignRole } = require('../models/role.model');
-const jwt = require('jsonwebtoken');
+const { sendNotification } = require('../utils/notification.utils');
 const { validateEmail, validatePassword } = require('../validators/validators');
 const axios = require('axios');
-
 
 // Replace with your user-service base URL
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://user-service:3002';
@@ -30,47 +28,50 @@ function prepareProfileData(data) {
   }
 
   return {
-    email: data.email.toLowerCase().trim(),
-    full_name: data.full_name?.trim(),
-    phone: data.phone?.trim(),
+    user_id: data.user_id,
+    email: data.email?.toLowerCase().trim(),
+    full_name: data.full_name?.trim() || '',
+    phone: data.phone?.trim() || '',
     date_of_birth: formatDateOfBirth(data.date_of_birth),
-    address: data.address?.trim(),
-    avatar_url: data.avatar_url?.trim(),
-    bio: data.bio?.trim()
+    address: data.address?.trim() || '',
+    avatar_url: data.avatar_url?.trim() || '',
+    bio: data.bio?.trim() || ''
   };
 }
 
+// Define Headers for application/json
+const headers = {
+  'Content-Type': 'application/json',
+};
 
 async function sendProfileToUserService(userId, profileData) {
-  console.log('🔵 Sending profile to user-service:')
+  console.log('🔵 Sending profile to user-service:');
   console.log('User ID:', userId);
   console.log('Profile Data:', profileData);
   console.log('User Service URL:', USER_SERVICE_URL);
   try {
-   const response = await axios.post(
-  `${USER_SERVICE_URL}/api/user/createProfile`, 
-  payload,
-  { headers }
-);
+    const response = await axios.post(
+      `${USER_SERVICE_URL}/api/user/createProfile`,
+      { ...profileData, user_id: userId },
+      { headers }
+    );
 
     console.log('✅ User-service response:', response.data);
     return response.data;
   } catch (err) {
     console.error('❌ Failed to send profile to user-service:', err.message);
-    throw err;
+    throw new Error(`User service error: ${err.response?.data?.error || err.message}`);
   }
 }
 
-
-
 const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_TIME = 15 * 60 * 1000; 
+const LOCKOUT_TIME = 15 * 60 * 1000;
 
 const isLockedOut = (email) => {
   const attempts = loginAttempts.get(email);
   if (!attempts) return false;
-  
+
   if (attempts.count >= MAX_LOGIN_ATTEMPTS) {
     if (Date.now() - attempts.lastAttempt < LOCKOUT_TIME) {
       return true;
@@ -95,7 +96,7 @@ const clearFailedAttempts = (email) => {
 };
 
 exports.registerClient = async (req, res) => {
-  req.body.role = 'user'; 
+  req.body.role = 'user';
   return exports.register(req, res);
 };
 
@@ -103,8 +104,8 @@ exports.registerAdmin = async (req, res) => {
   if (!req.body.role) {
     req.body.role = 'admin';
   }
-  return exports.register(req, res); 
-}
+  return exports.register(req, res);
+};
 
 exports.register = async (req, res) => {
   const client = await pool.connect();
@@ -115,42 +116,12 @@ exports.register = async (req, res) => {
       password,
       role = 'user',
       phone = '',
-      full_name,
+      full_name = '',
       date_of_birth = null,
       address = '',
       avatar_url = '',
       bio = ''
     } = req.body;
-
- const profileData = prepareProfileData({
-  email,
-  full_name,
-  phone,
-  date_of_birth,
-  address,
-  avatar_url,
-  bio
-});
-
-
-
-    console.log('🔵 Profile Information:', profileData);
-
-    const tokenUser = req.user;
-    const privilegedRoles = ['admin', 'user_admin', 'finance_admin', 'audit_admin'];
-
-    // Authorization check for privileged roles
-    if (privilegedRoles.includes(role)) {
-      const isAdmin =
-        tokenUser &&
-        Array.isArray(tokenUser.roles) &&
-        tokenUser.roles.includes('admin');
-      if (!isAdmin) {
-        return res.status(403).json({
-          error: `Only administrators can assign the role '${role}'`
-        });
-      }
-    }
 
     // Validate email & password
     if (!email || !password) {
@@ -180,6 +151,22 @@ exports.register = async (req, res) => {
         .json({ error: 'An account with this email already exists' });
     }
 
+    const tokenUser = req.user;
+    const privilegedRoles = ['admin', 'user_admin', 'finance_admin', 'audit_admin'];
+
+    // Authorization check for privileged roles
+    if (privilegedRoles.includes(role)) {
+      const isAdmin =
+        tokenUser &&
+        Array.isArray(tokenUser.roles) &&
+        tokenUser.roles.includes('admin');
+      if (!isAdmin) {
+        return res.status(403).json({
+          error: `Only administrators can assign the role '${role}'`
+        });
+      }
+    }
+
     await client.query('BEGIN');
 
     const userId = uuidv4();
@@ -189,12 +176,33 @@ exports.register = async (req, res) => {
     await createUser(userId, sanitizedEmail, hashedPassword, client);
     await assignRole(userId, role, client);
 
+    // ✅ Prepare and send profile to user-service
+    const profileData = prepareProfileData({
+      user_id: userId,
+      email,
+      full_name,
+      phone,
+      date_of_birth,
+      address,
+      avatar_url,
+      bio
+    });
 
-    // ✅ Send profile to user-service
-    console.log('🟣 Sending profile to user-service...');
+    console.log('🔵 Profile Information:', profileData);
     await sendProfileToUserService(userId, profileData);
 
     await client.query('COMMIT');
+
+    // Send notification for user registration
+    await sendNotification({
+      type: 'USER_REGISTERED',
+      user_id: userId,
+      email: sanitizedEmail,
+      full_name: profileData.full_name,
+      role,
+      timestamp: new Date().toISOString(),
+      message:'YOU ARE REGISTRERD'
+    });
 
     console.log(`✅ Registered user ${sanitizedEmail} + profile`);
     return res.status(201).json({
@@ -205,9 +213,15 @@ exports.register = async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[REGISTER ERROR]', error.message);
+    logger.error('[REGISTER ERROR]', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body?.email
+    });
 
     return res.status(500).json({
-      error: 'Registration failed. Please try again later.'
+      error: 'Registration failed. Please try again later.',
+      details: error.message.includes('User service error') ? error.message : undefined
     });
   } finally {
     client.release();
@@ -218,7 +232,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       logger.warn('Login attempt with missing credentials');
       return res.status(400).json({ error: 'Email and password are required' });
@@ -233,8 +247,8 @@ exports.login = async (req, res) => {
     // Check rate limiting
     if (isLockedOut(sanitizedEmail)) {
       logger.warn(`Login attempt blocked due to rate limiting: ${sanitizedEmail}`);
-      return res.status(429).json({ 
-        error: 'Too many failed login attempts. Please try again in 15 minutes.' 
+      return res.status(429).json({
+        error: 'Too many failed login attempts. Please try again in 15 minutes.'
       });
     }
 
@@ -242,7 +256,6 @@ exports.login = async (req, res) => {
     if (!user) {
       recordFailedAttempt(sanitizedEmail);
       logger.warn(`Login attempt with non-existent email: ${sanitizedEmail}`);
-      // Don't reveal whether user exists or not
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -275,8 +288,8 @@ exports.login = async (req, res) => {
       tokenId
     });
 
-    res.json({ 
-      message: 'Login successful', 
+    res.json({
+      message: 'Login successful',
       token,
       user: {
         id: user.id,
@@ -284,7 +297,6 @@ exports.login = async (req, res) => {
         roles: roles
       }
     });
-
   } catch (error) {
     logger.error('[LOGIN ERROR] Login process failed', {
       error: error.message,
@@ -305,7 +317,7 @@ exports.logout = async (req, res) => {
     }
 
     const token = auth.split(' ')[1];
-    
+
     if (!token) {
       return res.status(401).json({ error: 'Token is required' });
     }
@@ -326,7 +338,6 @@ exports.logout = async (req, res) => {
     });
 
     res.json({ message: 'Successfully logged out' });
-
   } catch (error) {
     logger.error('[LOGOUT ERROR] Logout process failed', {
       error: error.message,
@@ -356,7 +367,6 @@ exports.stillLoggedIn = async (req, res) => {
         roles: req.user.roles
       }
     });
-
   } catch (error) {
     logger.error('[TOKEN VERIFICATION ERROR]', {
       error: error.message,
@@ -382,8 +392,8 @@ exports.resetPassword = async (req, res) => {
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ 
-        error: 'New password must be at least 8 characters long and contain both letters and numbers' 
+      return res.status(400).json({
+        error: 'New password must be at least 8 characters long and contain both letters and numbers'
       });
     }
 
@@ -414,15 +424,22 @@ exports.resetPassword = async (req, res) => {
       [userId]
     );
 
+    // Send notification for password reset
+    await sendNotification({
+      type: 'PASSWORD_RESET',
+      user_id: userId,
+      email: req.user.email,
+      timestamp: new Date().toISOString()
+    });
+
     logger.info(`🔑 Password reset successfully for user: ${userId}`, {
       userId: userId,
       email: req.user.email
     });
 
-    res.json({ 
-      message: 'Password updated successfully. Please log in again with your new password.' 
+    res.json({
+      message: 'Password updated successfully. Please log in again with your new password.'
     });
-
   } catch (error) {
     logger.error('[RESET PASSWORD ERROR]', {
       error: error.message,
@@ -437,7 +454,7 @@ exports.resetPassword = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req?.body;
-    
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -448,10 +465,10 @@ exports.forgotPassword = async (req, res) => {
 
     const sanitizedEmail = email.toLowerCase().trim();
     const user = await findUserByEmail(sanitizedEmail);
-    
+
     // Always return success to prevent email enumeration
-    const successMessage = `If an account with that email  exists, we have sent password reset instructions.`;
-    
+    const successMessage = `If an account with that email exists, we have sent password reset instructions.`;
+
     if (!user) {
       logger.info(`Forgot password request for non-existent email: ${sanitizedEmail}`);
       return res.json({ message: successMessage });
@@ -462,7 +479,7 @@ exports.forgotPassword = async (req, res) => {
     const resetTokenHash = await bcrypt.hash(resetToken, 12);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    // Store reset token (you'll need to create this table)
+    // Store reset token
     await pool.query(
       'INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)',
       [uuidv4(), user.id, resetTokenHash, expiresAt]
@@ -470,7 +487,16 @@ exports.forgotPassword = async (req, res) => {
 
     // In production, send actual email with reset link
     const resetLink = `https://your-app.com/reset-password?token=${resetToken}&email=${encodeURIComponent(sanitizedEmail)}`;
-    
+
+    // Send notification for password reset request
+    await sendNotification({
+      type: 'PASSWORD_RESET_REQUEST',
+      user_id: user.id,
+      email: sanitizedEmail,
+      reset_link: resetLink,
+      timestamp: new Date().toISOString()
+    });
+
     logger.info(`Password reset token generated for: ${sanitizedEmail}`, {
       userId: user.id,
       email: sanitizedEmail,
@@ -481,7 +507,6 @@ exports.forgotPassword = async (req, res) => {
     // await sendPasswordResetEmail(sanitizedEmail, resetLink);
 
     res.json({ message: successMessage });
-
   } catch (error) {
     logger.error('[FORGOT PASSWORD ERROR]', {
       error: error.message,
@@ -496,7 +521,7 @@ exports.forgotPassword = async (req, res) => {
 exports.completePasswordReset = async (req, res) => {
   try {
     const { token, email, newPassword } = req.body;
-    
+
     if (!token || !email || !newPassword) {
       return res.status(400).json({ error: 'Token, email, and new password are required' });
     }
@@ -506,8 +531,8 @@ exports.completePasswordReset = async (req, res) => {
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ 
-        error: 'New password must be at least 8 characters long and contain both letters and numbers' 
+      return res.status(400).json({
+        error: 'New password must be at least 8 characters long and contain both letters and numbers'
       });
     }
 
@@ -531,7 +556,7 @@ exports.completePasswordReset = async (req, res) => {
     }
 
     const resetTokenData = tokenResult.rows[0];
-    
+
     // Verify token
     const validToken = await bcrypt.compare(token, resetTokenData.token_hash);
     if (!validToken) {
@@ -541,45 +566,51 @@ exports.completePasswordReset = async (req, res) => {
 
     // Update password and mark token as used
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-    
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
+
       // Update password
       await client.query(
         'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
         [hashedPassword, resetTokenData.user_id]
       );
-      
+
       // Mark reset token as used
       await client.query(
         'UPDATE password_reset_tokens SET used = TRUE WHERE id = $1',
         [resetTokenData.id]
       );
-      
+
       // Revoke all existing JWT tokens for security
       await client.query(
         'UPDATE jwt_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE',
         [resetTokenData.user_id]
       );
-      
+
       await client.query('COMMIT');
-      
+
+      // Send notification for completed password reset
+      await sendNotification({
+        type: 'PASSWORD_RESET_COMPLETED',
+        user_id: resetTokenData.user_id,
+        email: sanitizedEmail,
+        timestamp: new Date().toISOString()
+      });
+
       logger.info(`🔑 Password reset completed for: ${sanitizedEmail}`, {
         userId: resetTokenData.user_id,
         email: sanitizedEmail
       });
 
       res.json({ message: 'Password reset successfully. Please log in with your new password.' });
-      
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
-
   } catch (error) {
     logger.error('[COMPLETE PASSWORD RESET ERROR]', {
       error: error.message,
