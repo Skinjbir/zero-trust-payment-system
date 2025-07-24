@@ -1,12 +1,8 @@
-FROM node:18
+FROM node:18-slim
 
 WORKDIR /app
 
-# Update and upgrade OS packages, clean up cache to reduce image size
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 RUN npm install
