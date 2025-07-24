@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'auth-service/**'   # Only trigger when this folder changes
+      - 'services/auth-service/**'   # Only trigger when this folder changes
 
 env:
   DOCKER_REPO_PREFIX: mtarmidi
