@@ -4,235 +4,240 @@ on:
   push:
     branches: [main]
 
+env:
+  DOCKER_REPO_PREFIX: mtarmidi
+  IMAGE_TAG: latest
+  TRIVY_SEVERITY: CRITICAL,HIGH
+
 jobs:
   auth-service:
     name: Build & Push auth-service
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Check if auth-service changed
-      id: authcheck
-      run: |
-        git fetch origin main --depth=2
-        if git diff --name-only origin/main | grep '^auth-service/'; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Check if auth-service changed
+        id: authcheck
+        run: |
+          git fetch origin main --depth=2
+          if git diff --name-only origin/main | grep '^auth-service/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Skip if no changes
-      if: steps.authcheck.outputs.changed == 'false'
-      run: echo "No changes in auth-service, skipping."
+      - name: Skip if no changes
+        if: steps.authcheck.outputs.changed == 'false'
+        run: echo "No changes in auth-service, skipping."
 
-    - name: Log in to Docker Hub
-      if: steps.authcheck.outputs.changed == 'true'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.authcheck.outputs.changed == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
-      if: steps.authcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./auth-service
-        push: false
-        tags: mtarmidi/auth-service:latest
-        outputs: type=docker,dest=/tmp/auth-service.tar
+      - name: Build Docker image
+        if: steps.authcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./auth-service
+          push: false
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/auth-service:${{ env.IMAGE_TAG }}
+          outputs: type=docker,dest=/tmp/auth-service.tar
 
-    - name: Load Docker image for Trivy scan
-      if: steps.authcheck.outputs.changed == 'true'
-      run: docker load -i /tmp/auth-service.tar
+      - name: Load Docker image for Trivy scan
+        if: steps.authcheck.outputs.changed == 'true'
+        run: docker load -i /tmp/auth-service.tar
 
-    - name: Scan with Trivy
-      if: steps.authcheck.outputs.changed == 'true'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: mtarmidi/auth-service:latest
-        format: table
-        exit-code: 1
-        severity: CRITICAL,HIGH
+      - name: Scan with Trivy
+        if: steps.authcheck.outputs.changed == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REPO_PREFIX }}/auth-service:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: 1
+          severity: ${{ env.TRIVY_SEVERITY }}
 
-    - name: Push Docker image
-      if: steps.authcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./auth-service
-        push: true
-        tags: mtarmidi/auth-service:latest
+      - name: Push Docker image
+        if: steps.authcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./auth-service
+          push: true
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/auth-service:${{ env.IMAGE_TAG }}
 
   wallet-service:
     name: Build & Push wallet-service
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Check if wallet-service changed
-      id: walletcheck
-      run: |
-        git fetch origin main --depth=2
-        if git diff --name-only origin/main | grep '^wallet-service/'; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Check if wallet-service changed
+        id: walletcheck
+        run: |
+          git fetch origin main --depth=2
+          if git diff --name-only origin/main | grep '^wallet-service/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Skip if no changes
-      if: steps.walletcheck.outputs.changed == 'false'
-      run: echo "No changes in wallet-service, skipping."
+      - name: Skip if no changes
+        if: steps.walletcheck.outputs.changed == 'false'
+        run: echo "No changes in wallet-service, skipping."
 
-    - name: Log in to Docker Hub
-      if: steps.walletcheck.outputs.changed == 'true'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.walletcheck.outputs.changed == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
-      if: steps.walletcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./wallet-service
-        push: false
-        tags: mtarmidi/wallet-service:latest
-        outputs: type=docker,dest=/tmp/wallet-service.tar
+      - name: Build Docker image
+        if: steps.walletcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./wallet-service
+          push: false
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/wallet-service:${{ env.IMAGE_TAG }}
+          outputs: type=docker,dest=/tmp/wallet-service.tar
 
-    - name: Load Docker image for Trivy scan
-      if: steps.walletcheck.outputs.changed == 'true'
-      run: docker load -i /tmp/wallet-service.tar
+      - name: Load Docker image for Trivy scan
+        if: steps.walletcheck.outputs.changed == 'true'
+        run: docker load -i /tmp/wallet-service.tar
 
-    - name: Scan with Trivy
-      if: steps.walletcheck.outputs.changed == 'true'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: mtarmidi/wallet-service:latest
-        format: table
-        exit-code: 1
-        severity: CRITICAL,HIGH
+      - name: Scan with Trivy
+        if: steps.walletcheck.outputs.changed == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REPO_PREFIX }}/wallet-service:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: 1
+          severity: ${{ env.TRIVY_SEVERITY }}
 
-    - name: Push Docker image
-      if: steps.walletcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./wallet-service
-        push: true
-        tags: mtarmidi/wallet-service:latest
+      - name: Push Docker image
+        if: steps.walletcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./wallet-service
+          push: true
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/wallet-service:${{ env.IMAGE_TAG }}
 
   user-service:
     name: Build & Push user-service
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Check if user-service changed
-      id: usercheck
-      run: |
-        git fetch origin main --depth=2
-        if git diff --name-only origin/main | grep '^user-service/'; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Check if user-service changed
+        id: usercheck
+        run: |
+          git fetch origin main --depth=2
+          if git diff --name-only origin/main | grep '^user-service/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Skip if no changes
-      if: steps.usercheck.outputs.changed == 'false'
-      run: echo "No changes in user-service, skipping."
+      - name: Skip if no changes
+        if: steps.usercheck.outputs.changed == 'false'
+        run: echo "No changes in user-service, skipping."
 
-    - name: Log in to Docker Hub
-      if: steps.usercheck.outputs.changed == 'true'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.usercheck.outputs.changed == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
-      if: steps.usercheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./user-service
-        push: false
-        tags: mtarmidi/user-service:latest
-        outputs: type=docker,dest=/tmp/user-service.tar
+      - name: Build Docker image
+        if: steps.usercheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./user-service
+          push: false
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/user-service:${{ env.IMAGE_TAG }}
+          outputs: type=docker,dest=/tmp/user-service.tar
 
-    - name: Load Docker image for Trivy scan
-      if: steps.usercheck.outputs.changed == 'true'
-      run: docker load -i /tmp/user-service.tar
+      - name: Load Docker image for Trivy scan
+        if: steps.usercheck.outputs.changed == 'true'
+        run: docker load -i /tmp/user-service.tar
 
-    - name: Scan with Trivy
-      if: steps.usercheck.outputs.changed == 'true'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: mtarmidi/user-service:latest
-        format: table
-        exit-code: 1
-        severity: CRITICAL,HIGH
+      - name: Scan with Trivy
+        if: steps.usercheck.outputs.changed == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REPO_PREFIX }}/user-service:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: 1
+          severity: ${{ env.TRIVY_SEVERITY }}
 
-    - name: Push Docker image
-      if: steps.usercheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./user-service
-        push: true
-        tags: mtarmidi/user-service:latest
+      - name: Push Docker image
+        if: steps.usercheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./user-service
+          push: true
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/user-service:${{ env.IMAGE_TAG }}
 
   notification-service:
     name: Build & Push notification-service
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Check if notification-service changed
-      id: notificationcheck
-      run: |
-        git fetch origin main --depth=2
-        if git diff --name-only origin/main | grep '^notification-service/'; then
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
+      - name: Check if notification-service changed
+        id: notificationcheck
+        run: |
+          git fetch origin main --depth=2
+          if git diff --name-only origin/main | grep '^notification-service/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Skip if no changes
-      if: steps.notificationcheck.outputs.changed == 'false'
-      run: echo "No changes in notification-service, skipping."
+      - name: Skip if no changes
+        if: steps.notificationcheck.outputs.changed == 'false'
+        run: echo "No changes in notification-service, skipping."
 
-    - name: Log in to Docker Hub
-      if: steps.notificationcheck.outputs.changed == 'true'
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: steps.notificationcheck.outputs.changed == 'true'
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build Docker image
-      if: steps.notificationcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./notification-service
-        push: false
-        tags: mtarmidi/notification-service:latest
-        outputs: type=docker,dest=/tmp/notification-service.tar
+      - name: Build Docker image
+        if: steps.notificationcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./notification-service
+          push: false
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/notification-service:${{ env.IMAGE_TAG }}
+          outputs: type=docker,dest=/tmp/notification-service.tar
 
-    - name: Load Docker image for Trivy scan
-      if: steps.notificationcheck.outputs.changed == 'true'
-      run: docker load -i /tmp/notification-service.tar
+      - name: Load Docker image for Trivy scan
+        if: steps.notificationcheck.outputs.changed == 'true'
+        run: docker load -i /tmp/notification-service.tar
 
-    - name: Scan with Trivy
-      if: steps.notificationcheck.outputs.changed == 'true'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: mtarmidi/notification-service:latest
-        format: table
-        exit-code: 1
-        severity: CRITICAL,HIGH
+      - name: Scan with Trivy
+        if: steps.notificationcheck.outputs.changed == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REPO_PREFIX }}/notification-service:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: 1
+          severity: ${{ env.TRIVY_SEVERITY }}
 
-    - name: Push Docker image
-      if: steps.notificationcheck.outputs.changed == 'true'
-      uses: docker/build-push-action@v5
-      with:
-        context: ./notification-service
-        push: true
-        tags: mtarmidi/notification-service:latest
+      - name: Push Docker image
+        if: steps.notificationcheck.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./notification-service
+          push: true
+          tags: ${{ env.DOCKER_REPO_PREFIX }}/notification-service:${{ env.IMAGE_TAG }}
