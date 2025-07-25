@@ -1,9 +1,20 @@
-
-
-const pool = require('../config/db');
+const path = require('path');
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const pool = require('../config/db');
 const logger = require('../utils/logger.util');
 
+// Résout le chemin absolu vers public.pem
+let publicKey;
+try {
+  const keyPath = path.resolve(__dirname, '../keys/public.pem');
+  publicKey = fs.readFileSync(keyPath, 'utf8');
+} catch (err) {
+  logger.error('Failed to load public key', { error: err.message });
+  process.exit(1); // Arrête le service si la clé est indispensable
+}
+
+// Vérifie si le token a été révoqué dans la base
 const checkTokenRevocation = async (token) => {
   try {
     if (!token) return true;
@@ -13,17 +24,14 @@ const checkTokenRevocation = async (token) => {
       [token]
     );
     
-    if (result.rows.length === 0) {
-      return true; 
-    }
-    
-    return result.rows[0].revoked;
+    return result.rows.length === 0 || result.rows[0].revoked;
   } catch (error) {
     logger.error('Token revocation check failed', { error: error.message });
     return true; 
   }
 };
 
+// Middleware de vérification JWT + révocation
 const verifyToken = async (req, res, next) => {
   try {
     const auth = req.headers.authorization;
@@ -37,35 +45,26 @@ const verifyToken = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ error: 'Token required' });
     }
-    
-    // Verify JWT
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Check if token is revoked
+
+    // 🔐 Vérification du JWT avec clé publique
+    const decoded = jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+
+    // 🔒 Vérification révocation
     const isRevoked = await checkTokenRevocation(token);
     if (isRevoked) {
       return res.status(401).json({ error: 'Token is revoked' });
     }
-    
+
     req.user = decoded;
-    
-    if (next) {
-      next();
-    } else {
-      // If used as endpoint, return user info
-      return res.json({
-        valid: true,
-        user: decoded
-      });
-    }
-    
+    next();
+
   } catch (error) {
     logger.error('Token verification failed', { error: error.message });
-    
+
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token expired' });
     }
-    
+
     return res.status(401).json({ error: 'Invalid token' });
   }
 };

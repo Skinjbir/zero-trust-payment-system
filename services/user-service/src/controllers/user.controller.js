@@ -272,9 +272,15 @@ exports.createProfile = async (req, res) => {
       await sendNotification({
         type: 'PROFILE_CREATED',
         user_id: sanitizedData.user_id,
-        email: sanitizedData.email,
-        full_name: sanitizedData.full_name,
-        timestamp: new Date().toISOString()
+        message: `Welcome, ${sanitizedData.full_name || 'User'}! Your profile has been created.`,
+        data: {
+          email: sanitizedData.email,
+          full_name: sanitizedData.full_name || null,
+          avatar_url: sanitizedData.avatar_url || null
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       res.status(201).json({
@@ -509,9 +515,14 @@ exports.updateUserProfile = async (req, res) => {
       await sendNotification({
         type: 'PROFILE_UPDATED',
         user_id: targetUserId,
-        updated_fields: updates.map(update => update.split(' = ')[0]), // Extract field names
-        updated_by: currentUserId,
-        timestamp: new Date().toISOString()
+        message: `Your profile was updated${isOwnProfile ? '' : ' by an admin'}.`,
+        data: {
+          updated_fields: updates.map(update => update.split(' = ')[0]),
+          updated_by: currentUserId
+        },
+        priority: isOwnProfile ? 'medium' : 'high',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       res.json({
@@ -602,8 +613,13 @@ exports.deleteUserProfile = async (req, res) => {
       await sendNotification({
         type: 'PROFILE_DELETED',
         user_id: targetUserId,
-        deleted_by: currentUserId,
-        timestamp: new Date().toISOString()
+        message: 'Your profile has been deleted by an admin.',
+        data: {
+          deleted_by: currentUserId
+        },
+        priority: 'high',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       res.json({

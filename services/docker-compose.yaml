@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: auth_user
       POSTGRES_PASSWORD: auth_pass
     ports:
-      - "5542:5432"   # kept DB port change to avoid conflicts
+      - "5542:5432"
     volumes:
       - auth-db-data:/var/lib/postgresql/data
       - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -26,7 +26,7 @@ services:
       POSTGRES_USER: user_user
       POSTGRES_PASSWORD: user_pass
     ports:
-      - "5543:5432"   # kept DB port change to avoid conflicts
+      - "5543:5432"
     volumes:
       - user-db-data:/var/lib/postgresql/data
       - ./user-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -41,10 +41,25 @@ services:
       POSTGRES_USER: wallet_user
       POSTGRES_PASSWORD: wallet_pass
     ports:
-      - "5544:5432"   # kept DB port change to avoid conflicts
+      - "5544:5432"
     volumes:
       - wallet-db-data:/var/lib/postgresql/data
       - ./wallet-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # 🔔 Notification DB
+  notification-db:
+    image: postgres:15
+    container_name: notification-db
+    restart: always
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: notification_pass
+    ports:
+      - "5545:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+      - ./notification-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   # 🐇 RabbitMQ (Message Broker)
   rabbitmq:
@@ -57,7 +72,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
-      AMQP_URL: amqp://guest:guest@rabbitmq:5672
 
   # 🔐 Auth Service
   auth-service:
@@ -114,13 +128,16 @@ services:
     container_name: notification-service
     restart: always
     depends_on:
+      - notification-db
       - rabbitmq
-    environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     ports:
       - "3004:3004"
+    environment:
+      DATABASE_URL: postgres://notification_user:notification_pass@notification-db:5432/notification_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
 
 volumes:
   auth-db-data:
   user-db-data:
   wallet-db-data:
+  notification-db-data:

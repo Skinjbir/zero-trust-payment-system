@@ -1,10 +1,10 @@
-// walletController.js - Handles wallet and transaction operations
-
 // Dependencies
+require('dotenv').config();
 const Wallet = require('../models/walletModel');
 const Transaction = require('../models/transactionModel');
 const db = require('../config/db');
 const { CONFIG } = require('../config/walletSettings');
+const { sendNotification } = require('../utils/notification.utils');
 const {
   validateWalletCreation,
   validateTransaction,
@@ -89,6 +89,21 @@ exports.createWallet = [
         'User ID': userId,
         'Currency': currency,
         'Wallet ID': wallet.id
+      });
+
+      // Send notification for wallet creation
+      await sendNotification({
+        type: 'WALLET_CREATED',
+        user_id: userId,
+        message: `Your ${currency} wallet has been created successfully.`,
+        data: {
+          wallet_id: wallet.id,
+          currency: wallet.currency,
+          balance: wallet.balance
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       // Return success response
@@ -200,6 +215,20 @@ exports.deleteOwnWallet = [
         'User ID': userId,
         'Wallet ID': wallet.id,
         'Currency': wallet.currency
+      });
+
+      // Send notification for wallet deletion
+      await sendNotification({
+        type: 'WALLET_DELETED',
+        user_id: userId,
+        message: `Your ${currency} wallet has been deleted.`,
+        data: {
+          wallet_id: wallet.id,
+          currency: wallet.currency
+        },
+        priority: 'high',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       // Return success response
@@ -354,6 +383,24 @@ exports.deposit = [
         'New Balance': newBalance
       });
 
+      // Send notification for deposit
+      await sendNotification({
+        type: 'DEPOSIT_SUCCESS',
+        user_id: userId,
+        message: `You deposited ${parsedAmount} ${currency} to your wallet.`,
+        data: {
+          wallet_id: wallet.id,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          new_balance: newBalance,
+          transaction_id: transactionId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
+      });
+
       // Return success response
       res.status(200).json({
         success: true,
@@ -458,6 +505,24 @@ exports.withdraw = [
         'Currency': wallet.currency,
         'Reference ID': referenceId || 'N/A',
         'New Balance': newBalance
+      });
+
+      // Send notification for withdrawal
+      await sendNotification({
+        type: 'WITHDRAWAL_SUCCESS',
+        user_id: userId,
+        message: `You withdrew ${parsedAmount} ${currency} from your wallet.`,
+        data: {
+          wallet_id: wallet.id,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          new_balance: newBalance,
+          transaction_id: transactionId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       // Return success response
@@ -614,6 +679,44 @@ exports.transfer = [
         'Recipient Balance': newRecipientBalance
       });
 
+      // Send notification to sender
+      await sendNotification({
+        type: 'TRANSFER_OUTGOING',
+        user_id: userId,
+        message: `You transferred ${parsedAmount} ${currency} to another user.`,
+        data: {
+          wallet_id: senderWallet.id,
+          amount: parsedAmount,
+          currency: currency,
+          new_balance: newSenderBalance,
+          transaction_id: transactionId,
+          recipient_id: recipientId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
+      });
+
+      // Send notification to recipient
+      await sendNotification({
+        type: 'TRANSFER_INCOMING',
+        user_id: recipientId,
+        message: `You received ${parsedAmount} ${currency} from another user.`,
+        data: {
+          wallet_id: recipientWallet.id,
+          amount: parsedAmount,
+          currency: currency,
+          new_balance: newRecipientBalance,
+          transaction_id: transactionId,
+          sender_id: userId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
+      });
+
       // Return success response
       res.status(200).json({
         success: true,
@@ -723,6 +826,24 @@ exports.walletDebit = [
         'New Balance': newBalance
       });
 
+      // Send notification for debit
+      await sendNotification({
+        type: 'DEBIT_SUCCESS',
+        user_id: userId,
+        message: `Your wallet was debited by ${parsedAmount} ${currency}.`,
+        data: {
+          wallet_id: wallet.id,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          new_balance: newBalance,
+          transaction_id: transactionId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
+      });
+
       // Return success response
       res.status(200).json({
         success: true,
@@ -823,6 +944,24 @@ exports.walletCredit = [
         'Currency': wallet.currency,
         'Reference ID': referenceId || 'N/A',
         'New Balance': newBalance
+      });
+
+      // Send notification for credit
+      await sendNotification({
+        type: 'CREDIT_SUCCESS',
+        user_id: userId,
+        message: `Your wallet was credited with ${parsedAmount} ${currency}.`,
+        data: {
+          wallet_id: wallet.id,
+          amount: parsedAmount,
+          currency: wallet.currency,
+          new_balance: newBalance,
+          transaction_id: transactionId,
+          reference_id: referenceId || transactionId
+        },
+        priority: 'medium',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       // Return success response
@@ -945,6 +1084,21 @@ exports.activateWallet = [
         'Admin ID': req.user.sub
       });
 
+      // Send notification for wallet activation
+      await sendNotification({
+        type: 'WALLET_ACTIVATED',
+        user_id: wallet.user_id,
+        message: `Your ${wallet.currency} wallet has been activated by an admin.`,
+        data: {
+          wallet_id: wallet.id,
+          currency: wallet.currency,
+          admin_id: req.user.sub
+        },
+        priority: 'high',
+        status: 'unread',
+        created_at: new Date().toISOString()
+      });
+
       res.status(200).json({
         success: true,
         message: 'Wallet activated successfully'
@@ -983,6 +1137,21 @@ exports.deactivateWallet = [
       logTransaction('wallet_deactivation', {
         'Wallet ID': req.params.walletId,
         'Admin ID': req.user.sub
+      });
+
+      // Send notification for wallet deactivation
+      await sendNotification({
+        type: 'WALLET_DEACTIVATED',
+        user_id: wallet.user_id,
+        message: `Your ${wallet.currency} wallet has been deactivated by an admin.`,
+        data: {
+          wallet_id: wallet.id,
+          currency: wallet.currency,
+          admin_id: req.user.sub
+        },
+        priority: 'high',
+        status: 'unread',
+        created_at: new Date().toISOString()
       });
 
       res.status(200).json({
