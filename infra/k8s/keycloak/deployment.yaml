@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - name: keycloak
+        image: jboss/keycloak:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_VENDOR
+          value: h2
+        - name: KEYCLOAK_USER
+          value: admin
+        - name: KEYCLOAK_PASSWORD
+          value: admin
+        volumeMounts:
+        - name: keycloak-data
+          mountPath: /opt/jboss/keycloak/standalone/data
+      volumes:
+      - name: keycloak-data
+        emptyDir: {}
+      restartPolicy: Always
+
