@@ -2,65 +2,13 @@ require('dotenv').config();
 const db = require('../config/db');
 const { getUserByIdFromDB, checkUserExists, insertProfile, insertUser } = require('../models/user.model');
 const { sendNotification } = require('../utils/notification.utils');
+const { validateEmail, validatePhone, sanitizeInput } = require('../utils/helpers.utils');
 
-const ROLES = {
-  USER: 'user',
-  ADMIN: 'admin',              
-  USER_ADMIN: 'user_admin',
-  FINANCE_ADMIN: 'finance_admin',
-  AUDIT_ADMIN: 'audit_admin'
-};
-
-// Role permissions mapping
-const PERMISSIONS = {
-  READ_ALL_USERS: [ROLES.ADMIN, ROLES.USER_ADMIN, ROLES.AUDIT_ADMIN],
-  READ_USER_DETAILS: [ROLES.ADMIN, ROLES.USER_ADMIN, ROLES.AUDIT_ADMIN],
-  MANAGE_USERS: [ROLES.ADMIN, ROLES.USER_ADMIN],
-  AUDIT_ACCESS: [ROLES.ADMIN, ROLES.AUDIT_ADMIN]
-};
-
-const checkPermission = (requiredRoles) => {
-  return (req, res, next) => {
-    const userRoles = req.user?.roles || [];
-
-    console.log('Checking permissions for user:', req.user);
-    console.log('User roles:', userRoles, 'Required roles:', requiredRoles);
-
-    if (userRoles.includes(ROLES.ADMIN)) {
-      console.log('User is ADMIN, bypassing permission check.');
-      return next(); 
-    }
-
-    const hasPermission = userRoles.some(role => requiredRoles.includes(role));
-    if (!hasPermission) {
-      console.log('Access denied: insufficient permissions');
-      return res.status(403).json({
-        error: 'Access denied',
-        message: 'Insufficient permissions'
-      });
-    }
-
-    console.log('Permission granted.');
-    next();
-  };
-};
-
-// Input validation helpers
-const validateEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-const validatePhone = (phone) => {
-  if (!phone) return true;
-  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-  return phoneRegex.test(phone.replace(/[\s\-\(\)]/g, ''));
-};
-
-const sanitizeInput = (input) => {
-  if (typeof input !== 'string') return input;
-  return input.trim().replace(/[<>]/g, '');
-};
+const {
+  ROLES,
+  checkPermission,
+  PERMISSIONS
+} = require('../utils/roles.utils');
 
 // Data filtering based on role
 const filterUserData = (user, userRole, isOwnProfile = false) => {
